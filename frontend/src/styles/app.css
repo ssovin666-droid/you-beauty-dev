@@ -1,0 +1,50 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #1c1e21;
+  background: #f7f6f3;
+  font-synthesis: none;
+  --bg: #f7f6f3;
+  --surface: rgba(255,255,255,.78);
+  --surface-solid: #fcfcfa;
+  --text: #1c1e21;
+  --muted: #727984;
+  --blue: #a9c5d6;
+  --blue-deep: #55799a;
+  --blue-soft: #e7eff8;
+  --rose: #d8b9b8;
+  --rose-soft: #f4e8e7;
+  --green-soft: #e8f1e7;
+  --line: rgba(38,45,55,.08);
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: radial-gradient(circle at top right,#eef4fa 0,transparent 32%), radial-gradient(circle at top left,#f7eceb 0,transparent 26%), var(--bg); }
+button { font: inherit; color: inherit; }
+button { cursor: pointer; }
+.mono { font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace; letter-spacing: .035em; }
+.app-shell { min-height: 100vh; padding-bottom: 88px; max-width: 760px; margin: 0 auto; position: relative; }
+.screen { padding: 28px 20px 36px; }
+h1,h2,h3,p { margin-top: 0; }
+h1 { font-size: 34px; line-height: 1; margin-bottom: 8px; letter-spacing: -.04em; }
+h2 { font-size: 38px; line-height: 1.04; letter-spacing: -.04em; }
+h3 { letter-spacing: -.025em; }
+.eyebrow,.subhead { color: var(--muted); font-size: 12px; text-transform: uppercase; }
+.topbar,.list-header,.section-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.icon-btn { width:46px; height:46px; border:1px solid var(--line); border-radius:50%; background:rgba(255,255,255,.72); font-size:22px; }
+.hero { min-height:260px; border-radius:34px; padding:28px; margin-top:24px; overflow:hidden; position:relative; background:linear-gradient(135deg,rgba(255,255,255,.86),rgba(236,242,249,.76) 62%,rgba(243,229,229,.8)); border:1px solid rgba(255,255,255,.8); }
+.hero-copy { position:relative; z-index:2; max-width:60%; }
+.hero-copy p { max-width:360px; line-height:1.7; color:#5f6670; }
+.hero-art { position:absolute; inset:0 0 0 48%; }
+.hero-bottle,.bottle-shape,.mini-bottle { position:absolute; background:linear-gradient(180deg,#fff,rgba(184,207,224,.7)); border:1px solid rgba(115,144,164,.18); box-shadow:0 18px 45px rgba(76,104,125,.12); }
+.hero-bottle { width:92px; height:158px; border-radius:28px 28px 22px 22px; right:24%; bottom:28px; transform:rotate(7deg); }
+.hero-bottle:before,.bottle-shape:before,.mini-bottle:before { content:""; position:absolute; width:36%; height:28%; background:#f8fbfd; border:1px solid rgba(115,144,164,.16); border-radius:14px 14px 8px 8px; left:32%; top:-22%; }
+.orb { position:absolute; border-radius:50%; background:radial-gradient(circle at 30% 30%,#fff,rgba(175,204,225,.42)); border:1px solid rgba(255,255,255,.9); }
+.orb-a{width:110px;height:110px;right:7%;top:27%}.orb-b{width:62px;height:62px;right:43%;top:18%}
+.dashboard-cards { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px; }
+.dashboard-card { border:1px solid rgba(255,255,255,.8); border-radius:28px; text-align:left; padding:22px; min-height:190px; position:relative; overflow:hidden; }
+.dashboard-card.blue{background:linear-gradient(135deg,#edf4ff,#dfeafb)}.dashboard-card.rose{background:linear-gradient(135deg,#fbf2f1,#f1e3df)}
+.dashboard-card h3{font-size:26px;margin:10px 0}.dashboard-card p{color:#58616d;line-height:1.5;font-size:13px}.big-icon{font-size:30px}.stats{font-size:12px;color:#5f6670}.stats em{color:#b3686b;font-style:normal}.arrow{position:absolute;right:20px;top:50%;font-size:32px;transform:translateY(-50%);font-weight:300}
+.brand-strip { margin-top:28px; }.section-heading h3{font-size:24px}.section-heading button{border:0;background:transparent;color:#667eae}.brand-pills{display:flex;gap:10px;flex-wrap:wrap}.brand-pills span,.brand-pills button{padding:13px 18px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.72)}
+.list-header { align-items:center; margin-bottom:20px; }.header-actions{display:flex;gap:10px}.segments,.chips{display:flex;gap:8px;background:rgba(231,233,238,.7);padding:6px;border-radius:22px;overflow:auto}.segments button,.chips button{border:0;border-radius:17px;background:transparent;padding:12px 18px;white-space:nowrap;color:#5f6771}.segments button.active,.chips button.active{background:white;color:#20242a;box-shadow:0 4px 16px rgba(43,53,62,.06)}
+.add-button{width:100%;border:0;border-radius:22px;padding:18px;margin:16px 0;background:linear-gradient(90deg,#eaf1ff,#e4edf9);color:#486aaf;font-size:18px}.product-list{display:flex;flex-direction:column;gap:14px}.product-card{position:relative;display:grid;grid-template-columns:145px 1fr;gap:18px;padding:12px;border-radius:26px;background:rgba(255,255,255,.74);border:1px solid var(--line);min-height:180px}.product-photo{border-radius:20px;position:relative;overflow:hidden}.accent-blue .product-photo{background:linear-gradient(135deg,#e4edfb,#f7fbff)}.accent-rose .product-photo{background:linear-gradient(135deg,#f7ece9,#fff)}.accent-green .product-photo{background:linear-gradient(135deg,#e8f0e8,#fafffa)}.bottle-shape{width:56px;height:104px;left:45px;top:44px;border-radius:16px}.product-copy{padding:8px 0 42px}.brand-label{font-size:12px;color:#344054}.product-copy h3{font-size:20px;margin:6px 0}.muted{font-size:12px;color:#8a9098}.price-row{display:flex;align-items:center;gap:10px;margin-top:14px}.price-row strong{font-size:25px}.old-price{text-decoration:line-through;color:#9298a2}.discount{background:#f3dfe0;color:#a65158;border-radius:10px;padding:5px 8px}.store-row{font-size:12px;color:#66707a;margin-top:9px}.ghost-cta{position:absolute;right:14px;bottom:14px;border:1px solid var(--line);border-radius:999px;padding:10px 14px;background:rgba(255,255,255,.88);color:#334d77}.chips{margin-bottom:0}.brand-list{display:flex;flex-direction:column;gap:14px;margin-top:16px}.brand-card{min-height:170px;border-radius:28px;padding:24px;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.85);display:grid;grid-template-columns:1fr 150px;align-items:center}.brand-card.blue{background:linear-gradient(135deg,#edf4ff,#dce9fb)}.brand-card.green{background:linear-gradient(135deg,#f3f8ef,#e6efdf)}.brand-card.rose{background:linear-gradient(135deg,#fff1f2,#f1e2e1)}.brand-card h3{font-size:28px;margin-bottom:8px}.brand-card .mono{font-size:12px;color:#ab6268}.follow{margin-top:18px;border:1px solid var(--line);border-radius:999px;padding:11px 18px;background:rgba(255,255,255,.82);color:#405fa3}.follow.active{background:#e1e9ff}.brand-art{position:relative;height:120px}.mini-bottle{width:56px;height:100px;right:30px;bottom:6px;border-radius:16px;transform:rotate(9deg)}
+.bottom-nav{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:min(760px,100%);display:grid;grid-template-columns:repeat(4,1fr);padding:10px 8px 14px;background:rgba(252,252,250,.92);backdrop-filter:blur(18px);border-top:1px solid var(--line);z-index:20}.nav-item{border:0;background:transparent;color:#7c838b;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px}.nav-item.active{color:#4f6fc4}.nav-icon{font-size:24px;line-height:1}
+@media(max-width:560px){.screen{padding:20px 14px 30px}.hero{padding:22px;min-height:240px}.hero-copy{max-width:70%}.hero h2{font-size:32px}.dashboard-cards{grid-template-columns:1fr}.product-card{grid-template-columns:112px 1fr}.product-copy h3{font-size:17px}.price-row strong{font-size:21px}.product-photo{min-height:150px}.bottle-shape{left:30px;top:42px}.brand-card{grid-template-columns:1fr 100px}.brand-card h3{font-size:24px}.ghost-cta{font-size:12px}}
