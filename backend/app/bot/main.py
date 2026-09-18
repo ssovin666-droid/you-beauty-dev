@@ -22,6 +22,7 @@ async def start(message: Message):
             ]
         ]
     )
+
     await message.answer(
         "Добавляй косметику по фото, следи за скидками и покупай выгоднее.",
         reply_markup=kb,
@@ -31,9 +32,15 @@ async def start(message: Message):
 async def main():
     if not settings.bot_token:
         raise SystemExit("BOT_TOKEN is not set")
+
     bot = Bot(settings.bot_token)
+
+    # Удаляем старый webhook, чтобы бот мог работать через polling
+    await bot.delete_webhook(drop_pending_updates=True)
+
     dp = Dispatcher()
     dp.include_router(router)
+
     await dp.start_polling(bot)
 
 
