@@ -49,7 +49,8 @@ export function Wishlist() {
       URL.revokeObjectURL(imagePreview)
     }
 
-    const preview = URL.createObjectURL(file)
+    const preview =
+      URL.createObjectURL(file)
 
     setImagePreview(preview)
     setLoading(true)
@@ -94,12 +95,13 @@ export function Wishlist() {
 
   return (
     <main className="screen list-screen">
+
       <header className="list-header">
         <div>
           <h1>Wishlist</h1>
 
           <div className="mono subhead">
-            0 товаров
+            0 товаров · 0 скидок сегодня
           </div>
         </div>
 
@@ -149,47 +151,82 @@ export function Wishlist() {
       {loading && imagePreview && (
         <div
           style={{
-            marginTop: '20px',
-            borderRadius: '28px',
+            marginTop: '22px',
+            background: '#ffffff',
+            borderRadius: '26px',
             overflow: 'hidden',
-            background: '#fff',
+            boxShadow:
+              '0 18px 50px rgba(31, 43, 50, 0.07)',
           }}
         >
-          <img
-            src={imagePreview}
-            alt="Загруженный товар"
-            style={{
-              display: 'block',
-              width: '100%',
-              height: '310px',
-              objectFit: 'cover',
-              opacity: 0.8,
-            }}
-          />
-
           <div
             style={{
-              padding: '18px 20px 22px',
+              position: 'relative',
             }}
           >
+            <img
+              src={imagePreview}
+              alt="Добавляемый товар"
+              style={{
+                width: '100%',
+                height: '330px',
+                objectFit: 'cover',
+                display: 'block',
+                opacity: 0.84,
+              }}
+            />
+
             <div
               className="mono"
               style={{
-                fontSize: '12px',
-                opacity: 0.6,
+                position: 'absolute',
+                top: '16px',
+                left: '16px',
+                padding: '8px 12px',
+                borderRadius: '100px',
+                background:
+                  'rgba(255,255,255,0.9)',
+                backdropFilter: 'blur(10px)',
+                fontSize: '11px',
+                letterSpacing: '0.08em',
               }}
             >
-              AI ANALYSIS
+              AI SEARCH
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: '20px 22px 24px',
+            }}
+          >
+            <div
+              className="mono subhead"
+              style={{
+                marginBottom: '7px',
+              }}
+            >
+              ИЩУ ТОЧНЫЙ ТОВАР
             </div>
 
             <div
               style={{
-                marginTop: '8px',
-                fontSize: '18px',
+                fontSize: '19px',
                 fontWeight: 600,
               }}
             >
-              Определяю продукт…
+              Анализирую фото…
+            </div>
+
+            <div
+              className="mono"
+              style={{
+                marginTop: '7px',
+                opacity: 0.5,
+                fontSize: '12px',
+              }}
+            >
+              бренд · название · вариант · объём
             </div>
           </div>
         </div>
@@ -198,21 +235,22 @@ export function Wishlist() {
       {error && (
         <div
           style={{
-            padding: '18px',
             marginTop: '20px',
+            padding: '18px 20px',
             borderRadius: '22px',
-            background: '#f6e9e9',
+            background: '#f4e7e7',
           }}
         >
           <strong>
-            Не получилось распознать товар
+            Не получилось определить товар
           </strong>
 
           <div
             className="mono"
             style={{
-              marginTop: '8px',
-              opacity: 0.7,
+              marginTop: '7px',
+              opacity: 0.65,
+              fontSize: '12px',
             }}
           >
             {error}
@@ -223,52 +261,69 @@ export function Wishlist() {
       {result && (
         <div
           style={{
-            marginTop: '20px',
+            marginTop: '22px',
+            background: '#ffffff',
             borderRadius: '28px',
             overflow: 'hidden',
-            background: '#ffffff',
             boxShadow:
-              '0 18px 50px rgba(30, 45, 55, 0.08)',
+              '0 20px 60px rgba(31, 43, 50, 0.08)',
           }}
         >
           {imagePreview && (
             <div
               style={{
                 position: 'relative',
-                background: '#f2f5f7',
+                background: '#eef3f5',
               }}
             >
               <img
                 src={imagePreview}
                 alt={
                   result.product_name ||
-                  'Распознанный продукт'
+                  'Распознанный товар'
                 }
                 style={{
-                  display: 'block',
                   width: '100%',
-                  height: '330px',
+                  height: '350px',
                   objectFit: 'cover',
+                  display: 'block',
                 }}
               />
 
               <div
+                className="mono"
                 style={{
                   position: 'absolute',
-                  left: '16px',
                   top: '16px',
+                  left: '16px',
                   padding: '8px 12px',
-                  borderRadius: '999px',
+                  borderRadius: '100px',
                   background:
-                    'rgba(255,255,255,0.9)',
-                  backdropFilter: 'blur(10px)',
+                    'rgba(255,255,255,0.92)',
+                  backdropFilter: 'blur(12px)',
                   fontSize: '11px',
-                  fontWeight: 600,
                   letterSpacing: '0.08em',
                 }}
-                className="mono"
               >
-                НАЙДЕНО AI
+                FOUND
+              </div>
+
+              <div
+                style={{
+                  position: 'absolute',
+                  right: '16px',
+                  top: '16px',
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '50%',
+                  display: 'grid',
+                  placeItems: 'center',
+                  background:
+                    'rgba(255,255,255,0.92)',
+                  fontSize: '20px',
+                }}
+              >
+                ♡
               </div>
             </div>
           )}
@@ -281,10 +336,10 @@ export function Wishlist() {
             <div
               className="mono"
               style={{
-                fontSize: '12px',
-                letterSpacing: '0.09em',
-                opacity: 0.55,
+                opacity: 0.5,
+                fontSize: '11px',
                 textTransform: 'uppercase',
+                letterSpacing: '0.1em',
               }}
             >
               {result.category ||
@@ -293,10 +348,9 @@ export function Wishlist() {
 
             <h2
               style={{
-                margin:
-                  '10px 0 6px 0',
-                fontSize: '25px',
-                lineHeight: 1.1,
+                margin: '11px 0 4px',
+                fontSize: '26px',
+                lineHeight: 1.08,
               }}
             >
               {result.brand ||
@@ -320,16 +374,16 @@ export function Wishlist() {
                   display: 'flex',
                   flexWrap: 'wrap',
                   gap: '8px',
-                  marginTop: '18px',
+                  marginTop: '17px',
                 }}
               >
                 {result.variant && (
                   <span
                     className="mono"
                     style={{
-                      padding: '8px 11px',
-                      borderRadius: '999px',
                       background: '#eff3f6',
+                      padding: '8px 11px',
+                      borderRadius: '100px',
                       fontSize: '12px',
                     }}
                   >
@@ -341,9 +395,9 @@ export function Wishlist() {
                   <span
                     className="mono"
                     style={{
-                      padding: '8px 11px',
-                      borderRadius: '999px',
                       background: '#eff3f6',
+                      padding: '8px 11px',
+                      borderRadius: '100px',
                       fontSize: '12px',
                     }}
                   >
@@ -355,31 +409,28 @@ export function Wishlist() {
 
             <div
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent:
-                  'space-between',
                 marginTop: '22px',
                 paddingTop: '18px',
                 borderTop:
-                  '1px solid rgba(0,0,0,0.06)',
+                  '1px solid rgba(20,30,35,0.07)',
+                display: 'flex',
+                justifyContent:
+                  'space-between',
+                alignItems: 'center',
               }}
             >
-              <span
+              <div
                 className="mono"
                 style={{
-                  fontSize: '12px',
-                  opacity: 0.55,
+                  fontSize: '11px',
+                  opacity: 0.5,
+                  letterSpacing: '0.07em',
                 }}
               >
-                УВЕРЕННОСТЬ AI
-              </span>
+                AI MATCH
+              </div>
 
-              <strong
-                style={{
-                  fontSize: '16px',
-                }}
-              >
+              <strong>
                 {Math.round(
                   (result.confidence || 0) *
                     100
@@ -396,20 +447,24 @@ export function Wishlist() {
         !error && (
           <div
             style={{
-              padding: '60px 24px',
+              marginTop: '28px',
+              padding: '52px 25px',
               textAlign: 'center',
+              borderRadius: '28px',
+              background:
+                'linear-gradient(180deg, #f4f7f8 0%, #faf9f7 100%)',
             }}
           >
             <div
               style={{
-                width: '72px',
-                height: '72px',
-                margin: '0 auto 20px',
-                borderRadius: '24px',
+                width: '66px',
+                height: '66px',
                 display: 'grid',
                 placeItems: 'center',
-                background: '#edf3f6',
-                fontSize: '30px',
+                margin: '0 auto 18px',
+                borderRadius: '22px',
+                background: '#ffffff',
+                fontSize: '27px',
               }}
             >
               ♡
@@ -417,25 +472,27 @@ export function Wishlist() {
 
             <h3
               style={{
-                marginBottom: '8px',
+                margin: 0,
+                fontSize: '20px',
               }}
             >
-              Wishlist пока пуст
+              Твой Wishlist пока пуст
             </h3>
 
             <div
               className="mono"
               style={{
-                opacity: 0.55,
-                lineHeight: 1.6,
-                fontSize: '13px',
+                marginTop: '10px',
+                opacity: 0.52,
+                fontSize: '12px',
+                lineHeight: 1.65,
               }}
             >
-              Добавь косметику по фотографии.
+              Добавляй средства, которые хочешь попробовать.
               <br />
-              You Beauty распознает товар
+              Мы будем следить за ценами
               <br />
-              и начнёт следить за ценой.
+              и сообщим о скидках.
             </div>
           </div>
         )}
