@@ -29,9 +29,7 @@ function readProducts(key: string): SavedProduct[] {
 
     const parsed = JSON.parse(raw)
 
-    return Array.isArray(parsed)
-      ? parsed
-      : []
+    return Array.isArray(parsed) ? parsed : []
   } catch {
     return []
   }
@@ -39,17 +37,14 @@ function readProducts(key: string): SavedProduct[] {
 
 function readBrands(): SavedBrand[] {
   try {
-    const raw =
-      localStorage.getItem(BRANDS_KEY)
+    const raw = localStorage.getItem(BRANDS_KEY)
 
     if (!raw) return []
 
     const parsed = JSON.parse(raw)
 
     return Array.isArray(parsed)
-      ? parsed.filter(
-          brand => brand.followed
-        )
+      ? parsed.filter(brand => brand.followed)
       : []
   } catch {
     return []
@@ -64,14 +59,10 @@ function countDiscounted(
       return true
     }
 
-    if (
+    return (
       typeof product.discount === 'number' &&
       product.discount > 0
-    ) {
-      return true
-    }
-
-    return false
+    )
   }).length
 }
 
@@ -133,16 +124,13 @@ export function Home({ go }: HomeProps) {
 
   return (
     <main className="screen home-screen">
-
       <header className="topbar">
         <div>
           <div className="eyebrow mono">
             BEAUTY PRICE TRACKING
           </div>
 
-          <h1>
-            You Beauty
-          </h1>
+          <h1>You Beauty</h1>
         </div>
 
         <button
@@ -183,7 +171,6 @@ export function Home({ go }: HomeProps) {
       </section>
 
       <section className="dashboard-cards">
-
         <button
           className="dashboard-card blue"
           onClick={() =>
@@ -195,9 +182,7 @@ export function Home({ go }: HomeProps) {
               ♡
             </span>
 
-            <h3>
-              Wishlist
-            </h3>
+            <h3>Wishlist</h3>
 
             <p className="mono">
               То, что хочется купить
@@ -237,13 +222,10 @@ export function Home({ go }: HomeProps) {
               ▣
             </span>
 
-            <h3>
-              Полка
-            </h3>
+            <h3>Полка</h3>
 
             <p className="mono">
-              То, что хочется
-              покупать снова
+              То, что хочется покупать снова
             </p>
 
             <div className="mono stats">
@@ -268,15 +250,11 @@ export function Home({ go }: HomeProps) {
             ›
           </span>
         </button>
-
       </section>
 
       <section className="brand-strip">
-
         <div className="section-heading">
-          <h3>
-            Бренды
-          </h3>
+          <h3>Бренды</h3>
 
           <button
             onClick={() =>
@@ -288,7 +266,6 @@ export function Home({ go }: HomeProps) {
         </div>
 
         <div className="brand-pills">
-
           {brands
             .slice(0, 3)
             .map(brand => (
@@ -304,7 +281,6 @@ export function Home({ go }: HomeProps) {
           >
             ＋ Добавить
           </button>
-
         </div>
 
         {brands.length === 0 && (
@@ -320,9 +296,7 @@ export function Home({ go }: HomeProps) {
             ни одного бренда
           </div>
         )}
-
       </section>
-
     </main>
   )
 }
