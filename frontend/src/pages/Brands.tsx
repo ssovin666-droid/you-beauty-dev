@@ -43,7 +43,11 @@ export function Brands() {
     if (!saved) return
 
     try {
-      setBrands(JSON.parse(saved))
+      const parsed = JSON.parse(saved)
+
+      if (Array.isArray(parsed)) {
+        setBrands(parsed)
+      }
     } catch {
       localStorage.removeItem(STORAGE_KEY)
     }
@@ -55,6 +59,10 @@ export function Brands() {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify(next)
+    )
+
+    window.dispatchEvent(
+      new Event('you-beauty-data-changed')
     )
   }
 
@@ -92,6 +100,7 @@ export function Brands() {
     }
 
     setQuery('')
+    setSearchOpen(false)
   }
 
   function unfollowBrand(name: string) {
@@ -102,28 +111,26 @@ export function Brands() {
     saveBrands(next)
   }
 
-  const filteredBrands = useMemo(() => {
-    if (activeTab === 'sale') {
-      return []
-    }
-
-    return brands.filter(
-      brand => brand.followed
-    )
-  }, [brands, activeTab])
+  const followedBrands = useMemo(
+    () =>
+      brands.filter(
+        brand => brand.followed
+      ),
+    [brands]
+  )
 
   const normalizedQuery =
     query.trim()
 
-  const exactExists = brands.some(
-    brand =>
-      brand.name.toLowerCase() ===
-      normalizedQuery.toLowerCase()
-  )
+  const exactExists =
+    followedBrands.some(
+      brand =>
+        brand.name.toLowerCase() ===
+        normalizedQuery.toLowerCase()
+    )
 
   return (
     <main className="screen list-screen">
-
       <header className="list-header">
         <div>
           <h1>Бренды</h1>
@@ -137,8 +144,11 @@ export function Brands() {
         <button
           className="icon-btn"
           onClick={() =>
-            setSearchOpen(value => !value)
+            setSearchOpen(
+              value => !value
+            )
           }
+          aria-label="Поиск бренда"
         >
           ⌕
         </button>
@@ -154,7 +164,9 @@ export function Brands() {
             autoFocus
             value={query}
             onChange={event =>
-              setQuery(event.target.value)
+              setQuery(
+                event.target.value
+              )
             }
             placeholder="Название бренда"
             style={{
@@ -186,7 +198,8 @@ export function Brands() {
                   </h3>
 
                   <div className="mono">
-                    Начать следить за брендом
+                    Начать следить
+                    за брендом
                   </div>
 
                   <button
@@ -278,14 +291,14 @@ export function Brands() {
               lineHeight: 1.6,
             }}
           >
-            Когда у отслеживаемых брендов
-            появятся скидки,
+            Когда у отслеживаемых
+            брендов появятся скидки,
             они будут собраны здесь.
           </div>
         </div>
-      ) : filteredBrands.length > 0 ? (
+      ) : followedBrands.length > 0 ? (
         <div className="brand-list">
-          {filteredBrands.map(
+          {followedBrands.map(
             brand => (
               <article
                 className={`brand-card ${getTone(
@@ -367,8 +380,8 @@ export function Brands() {
             Нажми поиск сверху
             и введи название бренда.
             <br />
-            Мы будем следить за его
-            скидками.
+            Мы будем следить
+            за его скидками.
           </div>
         </div>
       )}
