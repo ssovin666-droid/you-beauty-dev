@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 
+import { getTelegramAuthHeaders } from '../lib/telegram'
+
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
   'https://you-beauty-dev-production.up.railway.app/api'
@@ -14,16 +16,62 @@ type RecognitionResult = {
   confidence: number
 }
 
-export function Shelf() {
-  const fileInputRef = useRef<HTMLInputElement>(null)
+type SavedProduct = {
+  id: number
+  name: string
+  variant: string | null
+  size: string | null
+  category: string | null
+  image_url: string | null
+  brand: {
+    id: number
+    name: string
+    slug: string
+    image_url: string | null
+  } | null
+}
 
-  const [loading, setLoading] = useState(false)
+type TrackedItem = {
+  id: number
+  list_type: string
+  notifications_enabled: boolean
+  product: SavedProduct
+}
+
+export function Shelf() {
+  const fileInputRef =
+    useRef<HTMLInputElement>(null)
+
+  const [loading, setLoading] =
+    useState(false)
+
+  const [saving, setSaving] =
+    useState(false)
+
+  const [loadingItems, setLoadingItems] =
+    useState(true)
+
   const [result, setResult] =
     useState<RecognitionResult | null>(null)
+
   const [error, setError] =
     useState<string | null>(null)
+
+  const [accountError, setAccountError] =
+    useState<string | null>(null)
+
+  const [success, setSuccess] =
+    useState<string | null>(null)
+
   const [imagePreview, setImagePreview] =
     useState<string | null>(null)
+
+  const [items, setItems] =
+    useState<TrackedItem[]>([])
+
+  useEffect(() => {
+    loadShelf()
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -33,6 +81,60 @@ export function Shelf() {
     }
   }, [imagePreview])
 
+  async function loadShelf() {
+    setLoadingItems(true)
+    setAccountError(null)
+
+    try {
+      const headers =
+        getTelegramAuthHeaders()
+
+      if (
+        !headers['X-Telegram-Init-Data']
+      ) {
+        setAccountError(
+          'Открой You Beauty через Telegram, чтобы загрузить сохранённую Полку.'
+        )
+
+        setItems([])
+        return
+      }
+
+      const response = await fetch(
+        `${API_BASE}/tracked?list_type=shelf`,
+        {
+          headers,
+        }
+      )
+
+      const data =
+        await response.json()
+
+      if (!response.ok) {
+        throw new Error(
+          data?.detail ||
+            `Ошибка загрузки: ${response.status}`
+        )
+      }
+
+      setItems(
+        Array.isArray(data)
+          ? data
+          : []
+      )
+    } catch (err) {
+      console.error(err)
+
+      setAccountError(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось загрузить Полку'
+      )
+    } finally {
+      setLoadingItems(false)
+    }
+  }
+
   function openFilePicker() {
     fileInputRef.current?.click()
   }
@@ -40,7 +142,8 @@ export function Shelf() {
   async function handleFileChange(
     event: ChangeEvent<HTMLInputElement>
   ) {
-    const file = event.target.files?.[0]
+    const file =
+      event.target.files?.[0]
 
     if (!file) return
 
@@ -48,16 +151,23 @@ export function Shelf() {
       URL.revokeObjectURL(imagePreview)
     }
 
-    const preview = URL.createObjectURL(file)
+    const preview =
+      URL.createObjectURL(file)
 
     setImagePreview(preview)
     setLoading(true)
     setResult(null)
     setError(null)
+    setSuccess(null)
 
     try {
-      const formData = new FormData()
-      formData.append('file', file)
+      const formData =
+        new FormData()
+
+      formData.append(
+        'file',
+        file
+      )
 
       const response = await fetch(
         `${API_BASE}/recognize`,
@@ -67,7 +177,8 @@ export function Shelf() {
         }
       )
 
-      const data = await response.json()
+      const data =
+        await response.json()
 
       if (!response.ok) {
         throw new Error(
@@ -88,6 +199,96 @@ export function Shelf() {
     } finally {
       setLoading(false)
       event.target.value = ''
+    }
+  }
+
+  async function saveToShelf() {
+    if (!result) return
+
+    if (!result.product_name) {
+      setError(
+        'AI не определил название товара. Попробуй другое фото.'
+      )
+      return
+    }
+
+    setSaving(true)
+    setError(null)
+    setAccountError(null)
+    setSuccess(null)
+
+    try {
+      const authHeaders =
+        getTelegramAuthHeaders()
+
+      if (
+        !authHeaders[
+          'X-Telegram-Init-Data'
+        ]
+      ) {
+        throw new Error(
+          'Открой You Beauty через Telegram, чтобы сохранить товар в аккаунт.'
+        )
+      }
+
+      const response = await fetch(
+        `${API_BASE}/tracked/recognized`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+            ...authHeaders,
+          },
+          body: JSON.stringify({
+            list_type: 'shelf',
+            brand: result.brand,
+            product_name:
+              result.product_name,
+            variant:
+              result.variant,
+            size: result.size,
+            category:
+              result.category,
+          }),
+        }
+      )
+
+      const data =
+        await response.json()
+
+      if (!response.ok) {
+        throw new Error(
+          data?.detail ||
+            `Ошибка сохранения: ${response.status}`
+        )
+      }
+
+      await loadShelf()
+
+      setSuccess(
+        'Товар сохранён на твою Полку'
+      )
+
+      setResult(null)
+
+      if (imagePreview) {
+        URL.revokeObjectURL(
+          imagePreview
+        )
+      }
+
+      setImagePreview(null)
+    } catch (err) {
+      console.error(err)
+
+      setAccountError(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось сохранить товар'
+      )
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -115,7 +316,7 @@ export function Shelf() {
 
       <div className="chips">
         <button className="active">
-          Все 0
+          Все {items.length}
         </button>
 
         <button>
@@ -132,18 +333,56 @@ export function Shelf() {
         type="file"
         accept="image/*"
         onChange={handleFileChange}
-        style={{ display: 'none' }}
+        style={{
+          display: 'none',
+        }}
       />
 
       <button
         className="add-button"
         onClick={openFilePicker}
-        disabled={loading}
+        disabled={loading || saving}
       >
         {loading
           ? 'Распознаю товар...'
           : '＋ Добавить товар'}
       </button>
+
+      {success && (
+        <div
+          style={{
+            marginTop: '18px',
+            padding: '16px 18px',
+            borderRadius: '20px',
+            background: '#edf4ef',
+          }}
+        >
+          <strong>
+            ✓ {success}
+          </strong>
+        </div>
+      )}
+
+      {accountError && (
+        <div
+          style={{
+            marginTop: '18px',
+            padding: '16px 18px',
+            borderRadius: '20px',
+            background: '#f6e9e9',
+          }}
+        >
+          <div
+            className="mono"
+            style={{
+              fontSize: '12px',
+              lineHeight: 1.5,
+            }}
+          >
+            {accountError}
+          </div>
+        </div>
+      )}
 
       {loading && imagePreview && (
         <div
@@ -188,7 +427,7 @@ export function Shelf() {
           }}
         >
           <strong>
-            Не получилось распознать товар
+            Не получилось
           </strong>
 
           <div
@@ -288,18 +527,121 @@ export function Shelf() {
               >
                 AI уверен на{' '}
                 {Math.round(
-                  (result.confidence || 0) * 100
+                  (result.confidence || 0) *
+                    100
                 )}
                 %
               </div>
+
+              <button
+                className="add-button"
+                onClick={saveToShelf}
+                disabled={
+                  saving ||
+                  !result.product_name
+                }
+                style={{
+                  width: '100%',
+                  marginTop: '22px',
+                }}
+              >
+                {saving
+                  ? 'Сохраняю...'
+                  : '＋ Добавить на Полку'}
+              </button>
             </div>
           </div>
         </div>
       )}
 
+      {loadingItems && (
+        <div
+          className="mono"
+          style={{
+            padding: '30px 10px',
+            textAlign: 'center',
+            opacity: 0.5,
+          }}
+        >
+          Загружаю твою Полку…
+        </div>
+      )}
+
+      {!loadingItems &&
+        items.length > 0 && (
+          <div
+            className="product-list"
+            style={{
+              marginTop: '24px',
+            }}
+          >
+            {items.map(item => (
+              <article
+                key={item.id}
+                style={{
+                  padding: '20px 22px',
+                  marginBottom: '12px',
+                  borderRadius: '24px',
+                  background: '#ffffff',
+                  boxShadow:
+                    '0 12px 36px rgba(31,43,50,0.06)',
+                }}
+              >
+                <div
+                  className="mono"
+                  style={{
+                    opacity: 0.5,
+                    fontSize: '11px',
+                    textTransform:
+                      'uppercase',
+                  }}
+                >
+                  {item.product.category ||
+                    'Beauty product'}
+                </div>
+
+                <h3
+                  style={{
+                    margin: '8px 0 4px',
+                  }}
+                >
+                  {item.product.brand
+                    ?.name ||
+                    'Бренд не указан'}
+                </h3>
+
+                <div>
+                  {item.product.name}
+                </div>
+
+                {(item.product.variant ||
+                  item.product.size) && (
+                  <div
+                    className="mono"
+                    style={{
+                      marginTop: '9px',
+                      opacity: 0.55,
+                      fontSize: '12px',
+                    }}
+                  >
+                    {[
+                      item.product.variant,
+                      item.product.size,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+
       {!result &&
         !loading &&
-        !error && (
+        !loadingItems &&
+        items.length === 0 &&
+        !accountError && (
           <div
             style={{
               padding: '58px 24px',
@@ -321,9 +663,9 @@ export function Shelf() {
             >
               Добавь средство, которым пользуешься.
               <br />
-              Мы сообщим, когда его будет
+              Теперь оно сохранится
               <br />
-              выгодно купить снова.
+              в твоём Telegram-аккаунте.
             </div>
           </div>
         )}
