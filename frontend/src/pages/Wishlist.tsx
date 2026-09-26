@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 
+import { getTelegramAuthHeaders } from '../lib/telegram'
+
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
   'https://you-beauty-dev-production.up.railway.app/api'
@@ -14,17 +16,62 @@ type RecognitionResult = {
   confidence: number
 }
 
-export function Wishlist() {
-  const fileInputRef = useRef<HTMLInputElement>(null)
+type SavedProduct = {
+  id: number
+  name: string
+  variant: string | null
+  size: string | null
+  category: string | null
+  image_url: string | null
+  brand: {
+    id: number
+    name: string
+    slug: string
+    image_url: string | null
+  } | null
+}
 
-  const [loading, setLoading] = useState(false)
+type TrackedItem = {
+  id: number
+  list_type: string
+  notifications_enabled: boolean
+  product: SavedProduct
+}
+
+export function Wishlist() {
+  const fileInputRef =
+    useRef<HTMLInputElement>(null)
+
+  const [loading, setLoading] =
+    useState(false)
+
+  const [saving, setSaving] =
+    useState(false)
+
+  const [loadingItems, setLoadingItems] =
+    useState(true)
+
   const [result, setResult] =
     useState<RecognitionResult | null>(null)
+
   const [error, setError] =
+    useState<string | null>(null)
+
+  const [accountError, setAccountError] =
+    useState<string | null>(null)
+
+  const [success, setSuccess] =
     useState<string | null>(null)
 
   const [imagePreview, setImagePreview] =
     useState<string | null>(null)
+
+  const [items, setItems] =
+    useState<TrackedItem[]>([])
+
+  useEffect(() => {
+    loadWishlist()
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -34,6 +81,59 @@ export function Wishlist() {
     }
   }, [imagePreview])
 
+  async function loadWishlist() {
+    setLoadingItems(true)
+    setAccountError(null)
+
+    try {
+      const headers =
+        getTelegramAuthHeaders()
+
+      if (
+        !headers['X-Telegram-Init-Data']
+      ) {
+        setAccountError(
+          'Открой You Beauty через Telegram, чтобы загрузить сохранённый Wishlist.'
+        )
+
+        setItems([])
+        return
+      }
+
+      const response = await fetch(
+        `${API_BASE}/tracked?list_type=wishlist`,
+        {
+          headers,
+        }
+      )
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(
+          data?.detail ||
+            `Ошибка загрузки: ${response.status}`
+        )
+      }
+
+      setItems(
+        Array.isArray(data)
+          ? data
+          : []
+      )
+    } catch (err) {
+      console.error(err)
+
+      setAccountError(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось загрузить Wishlist'
+      )
+    } finally {
+      setLoadingItems(false)
+    }
+  }
+
   function openFilePicker() {
     fileInputRef.current?.click()
   }
@@ -41,12 +141,15 @@ export function Wishlist() {
   async function handleFileChange(
     event: ChangeEvent<HTMLInputElement>
   ) {
-    const file = event.target.files?.[0]
+    const file =
+      event.target.files?.[0]
 
     if (!file) return
 
     if (imagePreview) {
-      URL.revokeObjectURL(imagePreview)
+      URL.revokeObjectURL(
+        imagePreview
+      )
     }
 
     const preview =
@@ -56,10 +159,16 @@ export function Wishlist() {
     setLoading(true)
     setResult(null)
     setError(null)
+    setSuccess(null)
 
     try {
-      const formData = new FormData()
-      formData.append('file', file)
+      const formData =
+        new FormData()
+
+      formData.append(
+        'file',
+        file
+      )
 
       const response = await fetch(
         `${API_BASE}/recognize`,
@@ -69,7 +178,8 @@ export function Wishlist() {
         }
       )
 
-      const data = await response.json()
+      const data =
+        await response.json()
 
       if (!response.ok) {
         throw new Error(
@@ -93,15 +203,108 @@ export function Wishlist() {
     }
   }
 
+  async function saveToWishlist() {
+    if (!result) return
+
+    if (!result.product_name) {
+      setError(
+        'AI не определил название товара. Попробуй другое фото.'
+      )
+      return
+    }
+
+    setSaving(true)
+    setError(null)
+    setAccountError(null)
+    setSuccess(null)
+
+    try {
+      const authHeaders =
+        getTelegramAuthHeaders()
+
+      if (
+        !authHeaders[
+          'X-Telegram-Init-Data'
+        ]
+      ) {
+        throw new Error(
+          'Открой You Beauty через Telegram, чтобы сохранить товар в аккаунт.'
+        )
+      }
+
+      const response = await fetch(
+        `${API_BASE}/tracked/recognized`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+            ...authHeaders,
+          },
+          body: JSON.stringify({
+            list_type: 'wishlist',
+            brand: result.brand,
+            product_name:
+              result.product_name,
+            variant:
+              result.variant,
+            size: result.size,
+            category:
+              result.category,
+          }),
+        }
+      )
+
+      const data =
+        await response.json()
+
+      if (!response.ok) {
+        throw new Error(
+          data?.detail ||
+            `Ошибка сохранения: ${response.status}`
+        )
+      }
+
+      await loadWishlist()
+
+      setSuccess(
+        'Товар сохранён в твой Wishlist'
+      )
+
+      setResult(null)
+
+      if (imagePreview) {
+        URL.revokeObjectURL(
+          imagePreview
+        )
+      }
+
+      setImagePreview(null)
+    } catch (err) {
+      console.error(err)
+
+      setAccountError(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось сохранить товар'
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <main className="screen list-screen">
-
       <header className="list-header">
         <div>
           <h1>Wishlist</h1>
 
           <div className="mono subhead">
-            0 товаров · 0 скидок сегодня
+            {items.length}{' '}
+            {items.length === 1
+              ? 'товар'
+              : 'товаров'}
+            {' · '}0 скидок сегодня
           </div>
         </div>
 
@@ -135,18 +338,56 @@ export function Wishlist() {
         type="file"
         accept="image/*"
         onChange={handleFileChange}
-        style={{ display: 'none' }}
+        style={{
+          display: 'none',
+        }}
       />
 
       <button
         className="add-button"
         onClick={openFilePicker}
-        disabled={loading}
+        disabled={loading || saving}
       >
         {loading
           ? 'Распознаю товар...'
           : '＋ Добавить товар'}
       </button>
+
+      {success && (
+        <div
+          style={{
+            marginTop: '18px',
+            padding: '16px 18px',
+            borderRadius: '20px',
+            background: '#edf4ef',
+          }}
+        >
+          <strong>
+            ✓ {success}
+          </strong>
+        </div>
+      )}
+
+      {accountError && (
+        <div
+          style={{
+            marginTop: '18px',
+            padding: '16px 18px',
+            borderRadius: '20px',
+            background: '#f6e9e9',
+          }}
+        >
+          <div
+            className="mono"
+            style={{
+              fontSize: '12px',
+              lineHeight: 1.5,
+            }}
+          >
+            {accountError}
+          </div>
+        </div>
+      )}
 
       {loading && imagePreview && (
         <div
@@ -186,9 +427,11 @@ export function Wishlist() {
                 borderRadius: '100px',
                 background:
                   'rgba(255,255,255,0.9)',
-                backdropFilter: 'blur(10px)',
+                backdropFilter:
+                  'blur(10px)',
                 fontSize: '11px',
-                letterSpacing: '0.08em',
+                letterSpacing:
+                  '0.08em',
               }}
             >
               AI SEARCH
@@ -197,7 +440,8 @@ export function Wishlist() {
 
           <div
             style={{
-              padding: '20px 22px 24px',
+              padding:
+                '20px 22px 24px',
             }}
           >
             <div
@@ -242,7 +486,7 @@ export function Wishlist() {
           }}
         >
           <strong>
-            Не получилось определить товар
+            Не получилось
           </strong>
 
           <div
@@ -293,16 +537,21 @@ export function Wishlist() {
               <div
                 className="mono"
                 style={{
-                  position: 'absolute',
+                  position:
+                    'absolute',
                   top: '16px',
                   left: '16px',
-                  padding: '8px 12px',
-                  borderRadius: '100px',
+                  padding:
+                    '8px 12px',
+                  borderRadius:
+                    '100px',
                   background:
                     'rgba(255,255,255,0.92)',
-                  backdropFilter: 'blur(12px)',
+                  backdropFilter:
+                    'blur(12px)',
                   fontSize: '11px',
-                  letterSpacing: '0.08em',
+                  letterSpacing:
+                    '0.08em',
                 }}
               >
                 FOUND
@@ -310,7 +559,8 @@ export function Wishlist() {
 
               <div
                 style={{
-                  position: 'absolute',
+                  position:
+                    'absolute',
                   right: '16px',
                   top: '16px',
                   width: '42px',
@@ -338,8 +588,10 @@ export function Wishlist() {
               style={{
                 opacity: 0.5,
                 fontSize: '11px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
+                textTransform:
+                  'uppercase',
+                letterSpacing:
+                  '0.1em',
               }}
             >
               {result.category ||
@@ -348,7 +600,8 @@ export function Wishlist() {
 
             <h2
               style={{
-                margin: '11px 0 4px',
+                margin:
+                  '11px 0 4px',
                 fontSize: '26px',
                 lineHeight: 1.08,
               }}
@@ -381,10 +634,14 @@ export function Wishlist() {
                   <span
                     className="mono"
                     style={{
-                      background: '#eff3f6',
-                      padding: '8px 11px',
-                      borderRadius: '100px',
-                      fontSize: '12px',
+                      background:
+                        '#eff3f6',
+                      padding:
+                        '8px 11px',
+                      borderRadius:
+                        '100px',
+                      fontSize:
+                        '12px',
                     }}
                   >
                     {result.variant}
@@ -395,10 +652,14 @@ export function Wishlist() {
                   <span
                     className="mono"
                     style={{
-                      background: '#eff3f6',
-                      padding: '8px 11px',
-                      borderRadius: '100px',
-                      fontSize: '12px',
+                      background:
+                        '#eff3f6',
+                      padding:
+                        '8px 11px',
+                      borderRadius:
+                        '100px',
+                      fontSize:
+                        '12px',
                     }}
                   >
                     {result.size}
@@ -424,7 +685,8 @@ export function Wishlist() {
                 style={{
                   fontSize: '11px',
                   opacity: 0.5,
-                  letterSpacing: '0.07em',
+                  letterSpacing:
+                    '0.07em',
                 }}
               >
                 AI MATCH
@@ -432,23 +694,137 @@ export function Wishlist() {
 
               <strong>
                 {Math.round(
-                  (result.confidence || 0) *
-                    100
+                  (result.confidence ||
+                    0) * 100
                 )}
                 %
               </strong>
             </div>
+
+            <button
+              className="add-button"
+              onClick={saveToWishlist}
+              disabled={
+                saving ||
+                !result.product_name
+              }
+              style={{
+                marginTop: '22px',
+                width: '100%',
+              }}
+            >
+              {saving
+                ? 'Сохраняю...'
+                : '♡ Добавить в Wishlist'}
+            </button>
           </div>
         </div>
       )}
 
+      {loadingItems && (
+        <div
+          className="mono"
+          style={{
+            padding: '30px 10px',
+            textAlign: 'center',
+            opacity: 0.5,
+          }}
+        >
+          Загружаю твой Wishlist…
+        </div>
+      )}
+
+      {!loadingItems &&
+        items.length > 0 && (
+          <div
+            className="product-list"
+            style={{
+              marginTop: '24px',
+            }}
+          >
+            {items.map(item => (
+              <article
+                key={item.id}
+                style={{
+                  padding:
+                    '20px 22px',
+                  marginBottom: '12px',
+                  borderRadius:
+                    '24px',
+                  background:
+                    '#ffffff',
+                  boxShadow:
+                    '0 12px 36px rgba(31,43,50,0.06)',
+                }}
+              >
+                <div
+                  className="mono"
+                  style={{
+                    opacity: 0.5,
+                    fontSize: '11px',
+                    textTransform:
+                      'uppercase',
+                  }}
+                >
+                  {item.product
+                    .category ||
+                    'Beauty product'}
+                </div>
+
+                <h3
+                  style={{
+                    margin:
+                      '8px 0 4px',
+                  }}
+                >
+                  {item.product.brand
+                    ?.name ||
+                    'Бренд не указан'}
+                </h3>
+
+                <div>
+                  {item.product.name}
+                </div>
+
+                {(item.product
+                  .variant ||
+                  item.product
+                    .size) && (
+                  <div
+                    className="mono"
+                    style={{
+                      marginTop:
+                        '9px',
+                      opacity: 0.55,
+                      fontSize:
+                        '12px',
+                    }}
+                  >
+                    {[
+                      item.product
+                        .variant,
+                      item.product
+                        .size,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+
       {!result &&
         !loading &&
-        !error && (
+        !loadingItems &&
+        items.length === 0 &&
+        !accountError && (
           <div
             style={{
               marginTop: '28px',
-              padding: '52px 25px',
+              padding:
+                '52px 25px',
               textAlign: 'center',
               borderRadius: '28px',
               background:
@@ -461,9 +837,12 @@ export function Wishlist() {
                 height: '66px',
                 display: 'grid',
                 placeItems: 'center',
-                margin: '0 auto 18px',
-                borderRadius: '22px',
-                background: '#ffffff',
+                margin:
+                  '0 auto 18px',
+                borderRadius:
+                  '22px',
+                background:
+                  '#ffffff',
                 fontSize: '27px',
               }}
             >
@@ -488,11 +867,11 @@ export function Wishlist() {
                 lineHeight: 1.65,
               }}
             >
-              Добавляй средства, которые хочешь попробовать.
+              Добавляй средства,
+              которые хочешь попробовать.
               <br />
-              Мы будем следить за ценами
-              <br />
-              и сообщим о скидках.
+              Теперь они сохраняются
+              в твоём Telegram-аккаунте.
             </div>
           </div>
         )}
