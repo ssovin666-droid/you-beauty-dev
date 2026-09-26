@@ -1,9 +1,31 @@
 import { useEffect, useState } from 'react'
 
+import { getTelegramAuthHeaders } from '../lib/telegram'
+
 type Tab = 'wishlist' | 'shelf' | 'brands'
 
 type HomeProps = {
   go: (tab: Tab) => void
+}
+
+type TrackedItem = {
+  id: number
+  list_type: 'wishlist' | 'shelf'
+  notifications_enabled: boolean
+  product: {
+    id: number
+    name: string
+    variant: string | null
+    size: string | null
+    category: string | null
+    image_url: string | null
+    brand: {
+      id: number
+      name: string
+      slug: string
+      image_url: string | null
+    } | null
+  }
 }
 
 type SavedBrand = {
@@ -11,116 +33,172 @@ type SavedBrand = {
   followed: boolean
 }
 
-type SavedProduct = {
-  id?: number | string
-  discount?: number | null
-  has_discount?: boolean
-}
+const API_BASE =
+  import.meta.env.VITE_API_BASE ||
+  'https://you-beauty-dev-production.up.railway.app/api'
 
-const WISHLIST_KEY = 'you_beauty_wishlist'
-const SHELF_KEY = 'you_beauty_shelf'
-const BRANDS_KEY = 'you_beauty_followed_brands'
-
-function readProducts(key: string): SavedProduct[] {
-  try {
-    const raw = localStorage.getItem(key)
-
-    if (!raw) return []
-
-    const parsed = JSON.parse(raw)
-
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
+const BRANDS_KEY =
+  'you_beauty_followed_brands'
 
 function readBrands(): SavedBrand[] {
   try {
-    const raw = localStorage.getItem(BRANDS_KEY)
+    const raw =
+      localStorage.getItem(BRANDS_KEY)
 
     if (!raw) return []
 
     const parsed = JSON.parse(raw)
 
     return Array.isArray(parsed)
-      ? parsed.filter(brand => brand.followed)
+      ? parsed.filter(
+          brand => brand.followed
+        )
       : []
   } catch {
     return []
   }
 }
 
-function countDiscounted(
-  products: SavedProduct[]
-) {
-  return products.filter(product => {
-    if (product.has_discount === true) {
-      return true
-    }
-
-    return (
-      typeof product.discount === 'number' &&
-      product.discount > 0
-    )
-  }).length
-}
-
 export function Home({ go }: HomeProps) {
   const [wishlist, setWishlist] =
-    useState<SavedProduct[]>([])
+    useState<TrackedItem[]>([])
 
   const [shelf, setShelf] =
-    useState<SavedProduct[]>([])
+    useState<TrackedItem[]>([])
 
   const [brands, setBrands] =
     useState<SavedBrand[]>([])
 
-  function refreshData() {
-    setWishlist(
-      readProducts(WISHLIST_KEY)
-    )
+  const [loading, setLoading] =
+    useState(true)
 
-    setShelf(
-      readProducts(SHELF_KEY)
-    )
+  const [error, setError] =
+    useState<string | null>(null)
 
-    setBrands(
-      readBrands()
-    )
+  async function loadHomeData() {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const headers =
+        getTelegramAuthHeaders()
+
+      if (
+        !headers[
+          'X-Telegram-Init-Data'
+        ]
+      ) {
+        setWishlist([])
+        setShelf([])
+        setBrands(readBrands())
+
+        setError(
+          'Открой You Beauty через Telegram, чтобы загрузить сохранения.'
+        )
+
+        return
+      }
+
+      const [
+        wishlistResponse,
+        shelfResponse,
+      ] = await Promise.all([
+        fetch(
+          `${API_BASE}/tracked?list_type=wishlist`,
+          {
+            headers,
+          }
+        ),
+        fetch(
+          `${API_BASE}/tracked?list_type=shelf`,
+          {
+            headers,
+          }
+        ),
+      ])
+
+      const wishlistData =
+        await wishlistResponse.json()
+
+      const shelfData =
+        await shelfResponse.json()
+
+      if (!wishlistResponse.ok) {
+        throw new Error(
+          wishlistData?.detail ||
+            `Ошибка Wishlist: ${wishlistResponse.status}`
+        )
+      }
+
+      if (!shelfResponse.ok) {
+        throw new Error(
+          shelfData?.detail ||
+            `Ошибка Полки: ${shelfResponse.status}`
+        )
+      }
+
+      setWishlist(
+        Array.isArray(wishlistData)
+          ? wishlistData
+          : []
+      )
+
+      setShelf(
+        Array.isArray(shelfData)
+          ? shelfData
+          : []
+      )
+
+      setBrands(
+        readBrands()
+      )
+    } catch (err) {
+      console.error(err)
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось загрузить данные'
+      )
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
-    refreshData()
+    loadHomeData()
 
-    window.addEventListener(
-      'storage',
-      refreshData
+    function handleVisibility() {
+      if (
+        document.visibilityState ===
+        'visible'
+      ) {
+        loadHomeData()
+      }
+    }
+
+    document.addEventListener(
+      'visibilitychange',
+      handleVisibility
     )
 
     window.addEventListener(
-      'you-beauty-data-changed',
-      refreshData
+      'focus',
+      loadHomeData
     )
 
     return () => {
-      window.removeEventListener(
-        'storage',
-        refreshData
+      document.removeEventListener(
+        'visibilitychange',
+        handleVisibility
       )
 
       window.removeEventListener(
-        'you-beauty-data-changed',
-        refreshData
+        'focus',
+        loadHomeData
       )
     }
   }, [])
-
-  const wishlistDiscounts =
-    countDiscounted(wishlist)
-
-  const shelfDiscounts =
-    countDiscounted(shelf)
 
   return (
     <main className="screen home-screen">
@@ -130,7 +208,9 @@ export function Home({ go }: HomeProps) {
             BEAUTY PRICE TRACKING
           </div>
 
-          <h1>You Beauty</h1>
+          <h1>
+            You Beauty
+          </h1>
         </div>
 
         <button
@@ -170,6 +250,22 @@ export function Home({ go }: HomeProps) {
         </div>
       </section>
 
+      {error && (
+        <div
+          className="mono"
+          style={{
+            marginBottom: '18px',
+            padding: '12px 15px',
+            borderRadius: '16px',
+            background: '#f6e9e9',
+            fontSize: '11px',
+            lineHeight: 1.5,
+          }}
+        >
+          {error}
+        </div>
+      )}
+
       <section className="dashboard-cards">
         <button
           className="dashboard-card blue"
@@ -182,27 +278,22 @@ export function Home({ go }: HomeProps) {
               ♡
             </span>
 
-            <h3>Wishlist</h3>
+            <h3>
+              Wishlist
+            </h3>
 
             <p className="mono">
               То, что хочется купить
             </p>
 
             <div className="mono stats">
-              {wishlist.length}{' '}
-              {wishlist.length === 1
-                ? 'товар'
-                : 'товаров'}
-
-              {wishlistDiscounts > 0 && (
-                <>
-                  {' · '}
-                  <em>
-                    {wishlistDiscounts}{' '}
-                    со скидкой
-                  </em>
-                </>
-              )}
+              {loading
+                ? 'Загружаю...'
+                : `${wishlist.length} ${
+                    wishlist.length === 1
+                      ? 'товар'
+                      : 'товаров'
+                  }`}
             </div>
           </div>
 
@@ -222,27 +313,23 @@ export function Home({ go }: HomeProps) {
               ▣
             </span>
 
-            <h3>Полка</h3>
+            <h3>
+              Полка
+            </h3>
 
             <p className="mono">
-              То, что хочется покупать снова
+              То, что хочется
+              покупать снова
             </p>
 
             <div className="mono stats">
-              {shelf.length}{' '}
-              {shelf.length === 1
-                ? 'товар'
-                : 'товаров'}
-
-              {shelfDiscounts > 0 && (
-                <>
-                  {' · '}
-                  <em>
-                    {shelfDiscounts}{' '}
-                    со скидкой
-                  </em>
-                </>
-              )}
+              {loading
+                ? 'Загружаю...'
+                : `${shelf.length} ${
+                    shelf.length === 1
+                      ? 'товар'
+                      : 'товаров'
+                  }`}
             </div>
           </div>
 
@@ -254,7 +341,9 @@ export function Home({ go }: HomeProps) {
 
       <section className="brand-strip">
         <div className="section-heading">
-          <h3>Бренды</h3>
+          <h3>
+            Бренды
+          </h3>
 
           <button
             onClick={() =>
