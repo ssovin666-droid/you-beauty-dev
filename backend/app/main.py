@@ -5,26 +5,35 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import BigInteger, inspect, text
 
 from app.api.routes import router
+from app.api.match_admin import (
+    router as match_admin_router,
+)
 from app.db.session import engine
 from app.models import Base
 
 
 def prepare_database():
-    # Создаёт только отсутствующие таблицы.
-    # Существующие данные не удаляет.
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(
+        bind=engine
+    )
 
-    # Проверяем telegram_user_id на случай,
-    # если старая таблица users была создана как INTEGER.
     with engine.begin() as connection:
-        inspector = inspect(connection)
+        inspector = inspect(
+            connection
+        )
 
-        if "users" not in inspector.get_table_names():
+        if (
+            "users"
+            not in inspector.get_table_names()
+        ):
             return
 
         columns = {
             column["name"]: column
-            for column in inspector.get_columns("users")
+            for column
+            in inspector.get_columns(
+                "users"
+            )
         }
 
         telegram_column = columns.get(
@@ -51,7 +60,9 @@ def prepare_database():
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(
+    app: FastAPI,
+):
     prepare_database()
     yield
 
@@ -77,10 +88,7 @@ app.include_router(
     prefix="/api",
 )
 
-
-@app.get("/")
-def root():
-    return {
-        "ok": True,
-        "service": "you-beauty-api",
-    }
+app.include_router(
+    match_admin_router,
+    prefix="/api/admin",
+)
