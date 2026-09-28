@@ -228,8 +228,12 @@ def download_feed() -> str:
         return temp_path
 
     except Exception:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        if os.path.exists(
+            temp_path
+        ):
+            os.remove(
+                temp_path
+            )
 
         raise
 
@@ -253,7 +257,10 @@ def prepare_row(
 
     params = item.get("params")
 
-    if not isinstance(params, dict):
+    if not isinstance(
+        params,
+        dict,
+    ):
         params = {}
 
     brand_name = get_brand_name(
@@ -261,7 +268,9 @@ def prepare_row(
         params,
     )
 
-    affiliate_url = item.get("url")
+    affiliate_url = item.get(
+        "url"
+    )
 
     return {
         "store_id": store_id,
@@ -348,10 +357,51 @@ def prepare_row(
     }
 
 
+def deduplicate_rows(
+    rows: list[dict],
+) -> list[dict]:
+    """
+    В Golden Apple feed встречаются
+    повторяющиеся external_id.
+
+    PostgreSQL не позволяет в одном
+    INSERT ... ON CONFLICT дважды
+    обновить одну и ту же строку.
+
+    Поэтому внутри каждой партии
+    оставляем только последнюю запись
+    для пары store_id + external_id.
+    """
+
+    unique: dict[
+        tuple[int, str],
+        dict,
+    ] = {}
+
+    for row in rows:
+        key = (
+            row["store_id"],
+            row["external_id"],
+        )
+
+        unique[key] = row
+
+    return list(
+        unique.values()
+    )
+
+
 def upsert_batch(
     db,
     rows: list[dict],
 ):
+    if not rows:
+        return
+
+    rows = deduplicate_rows(
+        rows
+    )
+
     if not rows:
         return
 
@@ -368,54 +418,78 @@ def upsert_batch(
             set_={
                 "group_id":
                     statement.excluded.group_id,
+
                 "brand_name":
                     statement.excluded.brand_name,
+
                 "brand_normalized":
                     statement.excluded.brand_normalized,
+
                 "name":
                     statement.excluded.name,
+
                 "name_normalized":
                     statement.excluded.name_normalized,
+
                 "type_prefix":
                     statement.excluded.type_prefix,
+
                 "model":
                     statement.excluded.model,
+
                 "variant":
                     statement.excluded.variant,
+
                 "size":
                     statement.excluded.size,
+
                 "barcode":
                     statement.excluded.barcode,
+
                 "category_id":
                     statement.excluded.category_id,
+
                 "image_url":
                     statement.excluded.image_url,
+
                 "product_url":
                     statement.excluded.product_url,
+
                 "affiliate_url":
                     statement.excluded.affiliate_url,
+
                 "current_price":
                     statement.excluded.current_price,
+
                 "old_price":
                     statement.excluded.old_price,
+
                 "currency":
                     statement.excluded.currency,
+
                 "available":
                     statement.excluded.available,
+
                 "raw_params":
                     statement.excluded.raw_params,
+
                 "synced_at":
                     statement.excluded.synced_at,
             },
         )
     )
 
-    db.execute(statement)
+    db.execute(
+        statement
+    )
+
     db.commit()
 
 
 def sync_golden_apple_feed():
-    sync_started_at = datetime.utcnow()
+    sync_started_at = (
+        datetime.utcnow()
+    )
 
     zip_path = None
     db = SessionLocal()
@@ -424,11 +498,25 @@ def sync_golden_apple_feed():
     skipped = 0
 
     try:
+        print(
+            "GOLDEN_APPLE_SYNC | START"
+        )
+
         store = get_or_create_store(
             db
         )
 
+        print(
+            "GOLDEN_APPLE_SYNC | "
+            "DOWNLOADING FEED"
+        )
+
         zip_path = download_feed()
+
+        print(
+            "GOLDEN_APPLE_SYNC | "
+            "DOWNLOAD COMPLETE"
+        )
 
         with zipfile.ZipFile(
             zip_path,
@@ -438,9 +526,9 @@ def sync_golden_apple_feed():
                 name
                 for name
                 in archive.namelist()
-                if name.lower().endswith(
-                    ".json"
-                )
+                if name
+                .lower()
+                .endswith(".json")
             ]
 
             if not json_files:
@@ -450,6 +538,11 @@ def sync_golden_apple_feed():
                 )
 
             json_name = json_files[0]
+
+            print(
+                "GOLDEN_APPLE_SYNC | "
+                f"JSON={json_name}"
+            )
 
             batch: list[dict] = []
 
@@ -473,7 +566,10 @@ def sync_golden_apple_feed():
                         skipped += 1
                         continue
 
-                    batch.append(row)
+                    batch.append(
+                        row
+                    )
+
                     processed += 1
 
                     if (
@@ -487,15 +583,25 @@ def sync_golden_apple_feed():
 
                         batch = []
 
+                    if (
+                        processed % 5000
+                        == 0
+                    ):
+                        print(
+                            "GOLDEN_APPLE_SYNC | "
+                            f"PROCESSED={processed} "
+                            f"SKIPPED={skipped}"
+                        )
+
                 if batch:
                     upsert_batch(
                         db,
                         batch,
                     )
 
-        # Если товар был в прошлой выгрузке,
-        # но исчез из новой, не удаляем его,
-        # а помечаем как отсутствующий.
+        # Если товар был в старой выгрузке,
+        # но его нет в новой — считаем,
+        # что сейчас он недоступен.
         db.execute(
             update(
                 StoreCatalogItem
@@ -513,7 +619,7 @@ def sync_golden_apple_feed():
 
         db.commit()
 
-        return {
+        result = {
             "ok": True,
             "store": STORE_NAME,
             "processed": processed,
@@ -522,6 +628,24 @@ def sync_golden_apple_feed():
                 sync_started_at.isoformat()
             ),
         }
+
+        print(
+            "GOLDEN_APPLE_SYNC | "
+            f"DONE | {result}"
+        )
+
+        return result
+
+    except Exception as exc:
+        db.rollback()
+
+        print(
+            "GOLDEN_APPLE_SYNC | "
+            f"FAILED | {type(exc).__name__}: "
+            f"{exc}"
+        )
+
+        raise
 
     finally:
         db.close()
