@@ -6,9 +6,16 @@ from sqlalchemy import BigInteger, inspect, text
 
 from app.api.routes import router
 from app.db.session import engine
+from app.models import Base
 
 
 def prepare_database():
+    # Создаёт только отсутствующие таблицы.
+    # Существующие данные не удаляет.
+    Base.metadata.create_all(bind=engine)
+
+    # Проверяем telegram_user_id на случай,
+    # если старая таблица users была создана как INTEGER.
     with engine.begin() as connection:
         inspector = inspect(connection)
 
