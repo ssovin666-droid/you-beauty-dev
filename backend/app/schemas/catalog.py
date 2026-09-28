@@ -33,10 +33,12 @@ class TrackProductIn(BaseModel):
 
 class TrackRecognizedProductIn(BaseModel):
     list_type: str
-
     brand: str | None = None
     product_name: str
-
     variant: str | None = None
     size: str | None = None
     category: str | None = None
+
+
+class FollowBrandIn(BaseModel):
+    name: str
