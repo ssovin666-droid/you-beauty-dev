@@ -7,6 +7,7 @@ from app.models.catalog import (
     OutboundClick,
     Product,
     Store,
+    StoreCatalogItem,
     TrackedItem,
     User,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "OutboundClick",
     "Product",
     "Store",
+    "StoreCatalogItem",
     "TrackedItem",
     "User",
 ]
