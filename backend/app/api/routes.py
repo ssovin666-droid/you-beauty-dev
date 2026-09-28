@@ -1,11 +1,14 @@
 import hashlib
+import os
 import re
 import unicodedata
 from dataclasses import asdict
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
+    Header,
     HTTPException,
     UploadFile,
 )
@@ -16,6 +19,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.db.session import get_db
 from app.models import (
     Brand,
+    BrandSubscription,
     ListType,
     Offer,
     OutboundClick,
@@ -24,9 +28,14 @@ from app.models import (
     User,
 )
 from app.schemas.catalog import (
+    BrandOut,
+    FollowBrandIn,
     ProductOut,
     TrackProductIn,
     TrackRecognizedProductIn,
+)
+from app.services.golden_apple_feed import (
+    sync_golden_apple_feed,
 )
 from app.services.recognition import (
     recognize_product_image,
@@ -97,6 +106,54 @@ def make_canonical_key(
     return hashlib.sha256(
         raw.encode("utf-8")
     ).hexdigest()
+
+
+def get_or_create_brand(
+    db: Session,
+    brand_name: str,
+) -> Brand:
+    clean_name = brand_name.strip()
+
+    brand = db.scalar(
+        select(Brand).where(
+            func.lower(Brand.name)
+            == clean_name.lower()
+        )
+    )
+
+    if brand:
+        return brand
+
+    base_slug = make_slug(
+        clean_name
+    )
+
+    slug = base_slug
+
+    existing_slug = db.scalar(
+        select(Brand).where(
+            Brand.slug == slug
+        )
+    )
+
+    if existing_slug:
+        suffix = hashlib.sha256(
+            clean_name.encode("utf-8")
+        ).hexdigest()[:8]
+
+        slug = (
+            f"{base_slug}-{suffix}"
+        )
+
+    brand = Brand(
+        name=clean_name,
+        slug=slug,
+    )
+
+    db.add(brand)
+    db.flush()
+
+    return brand
 
 
 @router.get("/health")
@@ -322,47 +379,15 @@ def add_recognized_product(
     brand_name = None
 
     if payload.brand:
-        brand_name = payload.brand.strip()
+        brand_name = (
+            payload.brand.strip()
+        )
 
         if brand_name:
-            brand = db.scalar(
-                select(Brand).where(
-                    func.lower(Brand.name)
-                    == brand_name.lower()
-                )
+            brand = get_or_create_brand(
+                db,
+                brand_name,
             )
-
-            if not brand:
-                base_slug = make_slug(
-                    brand_name
-                )
-
-                slug = base_slug
-
-                existing_slug = db.scalar(
-                    select(Brand).where(
-                        Brand.slug == slug
-                    )
-                )
-
-                if existing_slug:
-                    suffix = hashlib.sha256(
-                        brand_name.encode(
-                            "utf-8"
-                        )
-                    ).hexdigest()[:8]
-
-                    slug = (
-                        f"{base_slug}-{suffix}"
-                    )
-
-                brand = Brand(
-                    name=brand_name,
-                    slug=slug,
-                )
-
-                db.add(brand)
-                db.flush()
 
     canonical_key = make_canonical_key(
         brand_name,
@@ -475,6 +500,141 @@ def add_recognized_product(
     }
 
 
+@router.get("/brand-subscriptions")
+def brand_subscriptions(
+    current_user: User = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(
+        select(
+            BrandSubscription,
+            Brand,
+        )
+        .join(
+            Brand,
+            Brand.id
+            == BrandSubscription.brand_id,
+        )
+        .where(
+            BrandSubscription.user_id
+            == current_user.id,
+            BrandSubscription.enabled.is_(True),
+        )
+        .order_by(
+            Brand.name.asc()
+        )
+    ).all()
+
+    return [
+        {
+            "id": subscription.id,
+            "enabled": subscription.enabled,
+            "brand": (
+                BrandOut.model_validate(
+                    brand
+                )
+            ),
+        }
+        for subscription, brand in rows
+    ]
+
+
+@router.post("/brand-subscriptions")
+def follow_brand(
+    payload: FollowBrandIn,
+    current_user: User = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
+):
+    clean_name = payload.name.strip()
+
+    if not clean_name:
+        raise HTTPException(
+            status_code=400,
+            detail="Brand name is required",
+        )
+
+    brand = get_or_create_brand(
+        db,
+        clean_name,
+    )
+
+    subscription = db.scalar(
+        select(BrandSubscription).where(
+            BrandSubscription.user_id
+            == current_user.id,
+            BrandSubscription.brand_id
+            == brand.id,
+        )
+    )
+
+    if subscription:
+        subscription.enabled = True
+
+    else:
+        subscription = BrandSubscription(
+            user_id=current_user.id,
+            brand_id=brand.id,
+            enabled=True,
+        )
+
+        db.add(subscription)
+
+    db.commit()
+    db.refresh(subscription)
+
+    return {
+        "ok": True,
+        "subscription_id": (
+            subscription.id
+        ),
+        "brand": (
+            BrandOut.model_validate(
+                brand
+            )
+        ),
+    }
+
+
+@router.delete(
+    "/brand-subscriptions/{brand_id}"
+)
+def unfollow_brand(
+    brand_id: int,
+    current_user: User = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
+):
+    subscription = db.scalar(
+        select(BrandSubscription).where(
+            BrandSubscription.user_id
+            == current_user.id,
+            BrandSubscription.brand_id
+            == brand_id,
+        )
+    )
+
+    if not subscription:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Brand subscription "
+                "not found"
+            ),
+        )
+
+    db.delete(subscription)
+    db.commit()
+
+    return {
+        "ok": True,
+    }
+
+
 @router.post("/recognize")
 async def recognize(
     file: UploadFile,
@@ -547,3 +707,46 @@ def outbound(
         target,
         status_code=307,
     )
+
+
+@router.post(
+    "/admin/sync/golden-apple"
+)
+def start_golden_apple_sync(
+    background_tasks: BackgroundTasks,
+    x_admin_key: str = Header(
+        default="",
+        alias="X-Admin-Key",
+    ),
+):
+    expected_key = os.getenv(
+        "ADMIN_SYNC_KEY",
+        "",
+    )
+
+    if not expected_key:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "ADMIN_SYNC_KEY "
+                "is not configured"
+            ),
+        )
+
+    if x_admin_key != expected_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden",
+        )
+
+    background_tasks.add_task(
+        sync_golden_apple_feed
+    )
+
+    return {
+        "ok": True,
+        "status": "started",
+        "message": (
+            "Golden Apple sync started"
+        ),
+    }
