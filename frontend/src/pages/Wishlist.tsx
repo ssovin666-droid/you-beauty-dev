@@ -319,20 +319,6 @@ export function Wishlist() {
         </div>
       </header>
 
-      <div className="segments">
-        <button className="active">
-          Все
-        </button>
-
-        <button>
-          Со скидкой
-        </button>
-
-        <button>
-          Бренды
-        </button>
-      </div>
-
       <input
         ref={fileInputRef}
         type="file"
