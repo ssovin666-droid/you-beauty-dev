@@ -24,6 +24,8 @@ from app.models import (
     Offer,
     OutboundClick,
     Product,
+    Store,
+    StoreCatalogItem,
     TrackedItem,
     User,
 )
@@ -36,6 +38,9 @@ from app.schemas.catalog import (
 )
 from app.services.golden_apple_feed import (
     sync_golden_apple_feed,
+)
+from app.services.product_matcher import (
+    link_product_to_best_match,
 )
 from app.services.recognition import (
     recognize_product_image,
@@ -156,6 +161,183 @@ def get_or_create_brand(
     return brand
 
 
+def get_offer_payload(
+    db: Session,
+    product_id: int,
+):
+    row = db.execute(
+        select(
+            Offer,
+            Store,
+        )
+        .join(
+            Store,
+            Store.id == Offer.store_id,
+        )
+        .where(
+            Offer.product_id
+            == product_id,
+            Store.slug
+            == "golden-apple",
+        )
+        .order_by(
+            Offer.updated_at.desc()
+        )
+    ).first()
+
+    if not row:
+        return None
+
+    offer, store = row
+
+    currency = db.scalar(
+        select(
+            StoreCatalogItem.currency
+        )
+        .where(
+            StoreCatalogItem.product_id
+            == product_id,
+            StoreCatalogItem.store_id
+            == offer.store_id,
+        )
+        .order_by(
+            StoreCatalogItem.synced_at.desc()
+        )
+        .limit(1)
+    )
+
+    current_price = (
+        float(offer.current_price)
+        if offer.current_price
+        is not None
+        else None
+    )
+
+    old_price = (
+        float(offer.old_price)
+        if offer.old_price
+        is not None
+        else None
+    )
+
+    has_discount = (
+        current_price is not None
+        and old_price is not None
+        and old_price > current_price
+        and old_price > 0
+    )
+
+    discount_percent = None
+
+    if has_discount:
+        discount_percent = round(
+            (
+                (
+                    old_price
+                    - current_price
+                )
+                / old_price
+            )
+            * 100
+        )
+
+    return {
+        "id": offer.id,
+        "store": {
+            "id": store.id,
+            "name": store.name,
+            "slug": store.slug,
+        },
+        "current_price": current_price,
+        "old_price": old_price,
+        "currency": currency,
+        "has_discount": has_discount,
+        "discount_percent": (
+            discount_percent
+        ),
+        "in_stock": offer.in_stock,
+        "product_url": (
+            offer.product_url
+        ),
+        "affiliate_url": (
+            offer.affiliate_url
+        ),
+    }
+
+
+def ensure_product_offer(
+    db: Session,
+    product: Product,
+):
+    existing_offer = db.scalar(
+        select(Offer.id)
+        .where(
+            Offer.product_id
+            == product.id
+        )
+        .limit(1)
+    )
+
+    if existing_offer:
+        return
+
+    try:
+        result = (
+            link_product_to_best_match(
+                db,
+                product,
+                "golden-apple",
+            )
+        )
+
+        print(
+            "PRODUCT_MATCH | "
+            f"product_id={product.id} "
+            f"matched={result.matched} "
+            f"confidence={result.confidence}"
+        )
+
+    except Exception as exc:
+        db.rollback()
+
+        print(
+            "PRODUCT_MATCH | "
+            f"FAILED product_id="
+            f"{product.id} | "
+            f"{type(exc).__name__}: "
+            f"{exc}"
+        )
+
+
+def serialize_tracked_item(
+    db: Session,
+    row: TrackedItem,
+):
+    return {
+        "id": row.id,
+        "list_type": (
+            row.list_type.value
+            if isinstance(
+                row.list_type,
+                ListType,
+            )
+            else row.list_type
+        ),
+        "notifications_enabled": (
+            row.notifications_enabled
+        ),
+        "product": (
+            ProductOut.model_validate(
+                row.product
+            )
+        ),
+        "offer": get_offer_payload(
+            db,
+            row.product_id,
+        ),
+    }
+
+
 @router.get("/health")
 def health():
     return {
@@ -176,7 +358,9 @@ def me(
             current_user.telegram_user_id
         ),
         "username": current_user.username,
-        "first_name": current_user.first_name,
+        "first_name": (
+            current_user.first_name
+        ),
     }
 
 
@@ -223,8 +407,8 @@ def tracked(
 
     if list_type:
         try:
-            parsed_list_type = ListType(
-                list_type
+            parsed_list_type = (
+                ListType(list_type)
             )
         except ValueError:
             raise HTTPException(
@@ -240,30 +424,23 @@ def tracked(
             == parsed_list_type
         )
 
-    rows = db.scalars(
-        stmt
-    ).all()
+    rows = list(
+        db.scalars(
+            stmt
+        ).all()
+    )
+
+    for row in rows:
+        ensure_product_offer(
+            db,
+            row.product,
+        )
 
     return [
-        {
-            "id": row.id,
-            "list_type": (
-                row.list_type.value
-                if isinstance(
-                    row.list_type,
-                    ListType,
-                )
-                else row.list_type
-            ),
-            "notifications_enabled": (
-                row.notifications_enabled
-            ),
-            "product": (
-                ProductOut.model_validate(
-                    row.product
-                )
-            ),
-        }
+        serialize_tracked_item(
+            db,
+            row,
+        )
         for row in rows
     ]
 
@@ -289,9 +466,17 @@ def add_tracked(
             ),
         )
 
-    product = db.get(
-        Product,
-        payload.product_id,
+    product = db.scalar(
+        select(Product)
+        .where(
+            Product.id
+            == payload.product_id
+        )
+        .options(
+            joinedload(
+                Product.brand
+            )
+        )
     )
 
     if not product:
@@ -316,12 +501,25 @@ def add_tracked(
         db.commit()
         db.refresh(existing)
 
+        ensure_product_offer(
+            db,
+            product,
+        )
+
         return {
             "ok": True,
-            "tracked_item_id": existing.id,
+            "tracked_item_id": (
+                existing.id
+            ),
             "product_id": product.id,
-            "list_type": list_type.value,
+            "list_type": (
+                list_type.value
+            ),
             "moved": True,
+            "offer": get_offer_payload(
+                db,
+                product.id,
+            ),
         }
 
     row = TrackedItem(
@@ -335,12 +533,23 @@ def add_tracked(
     db.commit()
     db.refresh(row)
 
+    ensure_product_offer(
+        db,
+        product,
+    )
+
     return {
         "ok": True,
         "tracked_item_id": row.id,
         "product_id": product.id,
-        "list_type": list_type.value,
+        "list_type": (
+            list_type.value
+        ),
         "moved": False,
+        "offer": get_offer_payload(
+            db,
+            product.id,
+        ),
     }
 
 
@@ -372,7 +581,9 @@ def add_recognized_product(
     if not product_name:
         raise HTTPException(
             status_code=400,
-            detail="product_name is required",
+            detail=(
+                "product_name is required"
+            ),
         )
 
     brand = None
@@ -389,11 +600,13 @@ def add_recognized_product(
                 brand_name,
             )
 
-    canonical_key = make_canonical_key(
-        brand_name,
-        product_name,
-        payload.variant,
-        payload.size,
+    canonical_key = (
+        make_canonical_key(
+            brand_name,
+            product_name,
+            payload.variant,
+            payload.size,
+        )
     )
 
     product = db.scalar(
@@ -403,7 +616,9 @@ def add_recognized_product(
             == canonical_key
         )
         .options(
-            joinedload(Product.brand)
+            joinedload(
+                Product.brand
+            )
         )
     )
 
@@ -430,7 +645,9 @@ def add_recognized_product(
                 if payload.category
                 else None
             ),
-            canonical_key=canonical_key,
+            canonical_key=(
+                canonical_key
+            ),
         )
 
         db.add(product)
@@ -454,8 +671,13 @@ def add_recognized_product(
         ):
             moved = True
 
-        existing.list_type = list_type
-        existing.notifications_enabled = True
+        existing.list_type = (
+            list_type
+        )
+
+        existing.notifications_enabled = (
+            True
+        )
 
         tracked_item = existing
 
@@ -471,17 +693,24 @@ def add_recognized_product(
 
     db.commit()
 
-    db.refresh(product)
-    db.refresh(tracked_item)
-
     product = db.scalar(
         select(Product)
         .where(
-            Product.id == product.id
+            Product.id
+            == product.id
         )
         .options(
-            joinedload(Product.brand)
+            joinedload(
+                Product.brand
+            )
         )
+    )
+
+    db.refresh(tracked_item)
+
+    ensure_product_offer(
+        db,
+        product,
     )
 
     return {
@@ -490,12 +719,18 @@ def add_recognized_product(
             tracked_item.id
         ),
         "product_id": product.id,
-        "list_type": list_type.value,
+        "list_type": (
+            list_type.value
+        ),
         "moved": moved,
         "product": (
             ProductOut.model_validate(
                 product
             )
+        ),
+        "offer": get_offer_payload(
+            db,
+            product.id,
         ),
     }
 
@@ -520,7 +755,9 @@ def brand_subscriptions(
         .where(
             BrandSubscription.user_id
             == current_user.id,
-            BrandSubscription.enabled.is_(True),
+            BrandSubscription.enabled.is_(
+                True
+            ),
         )
         .order_by(
             Brand.name.asc()
@@ -530,14 +767,17 @@ def brand_subscriptions(
     return [
         {
             "id": subscription.id,
-            "enabled": subscription.enabled,
+            "enabled": (
+                subscription.enabled
+            ),
             "brand": (
                 BrandOut.model_validate(
                     brand
                 )
             ),
         }
-        for subscription, brand in rows
+        for subscription, brand
+        in rows
     ]
 
 
@@ -549,12 +789,16 @@ def follow_brand(
     ),
     db: Session = Depends(get_db),
 ):
-    clean_name = payload.name.strip()
+    clean_name = (
+        payload.name.strip()
+    )
 
     if not clean_name:
         raise HTTPException(
             status_code=400,
-            detail="Brand name is required",
+            detail=(
+                "Brand name is required"
+            ),
         )
 
     brand = get_or_create_brand(
@@ -575,10 +819,12 @@ def follow_brand(
         subscription.enabled = True
 
     else:
-        subscription = BrandSubscription(
-            user_id=current_user.id,
-            brand_id=brand.id,
-            enabled=True,
+        subscription = (
+            BrandSubscription(
+                user_id=current_user.id,
+                brand_id=brand.id,
+                enabled=True,
+            )
         )
 
         db.add(subscription)
@@ -733,7 +979,10 @@ def start_golden_apple_sync(
             ),
         )
 
-    if x_admin_key != expected_key:
+    if (
+        x_admin_key
+        != expected_key
+    ):
         raise HTTPException(
             status_code=403,
             detail="Forbidden",
