@@ -148,7 +148,9 @@ export function Shelf() {
     if (!file) return
 
     if (imagePreview) {
-      URL.revokeObjectURL(imagePreview)
+      URL.revokeObjectURL(
+        imagePreview
+      )
     }
 
     const preview =
@@ -313,20 +315,6 @@ export function Shelf() {
           </button>
         </div>
       </header>
-
-      <div className="chips">
-        <button className="active">
-          Все {items.length}
-        </button>
-
-        <button>
-          Нужен повтор 0
-        </button>
-
-        <button>
-          Есть скидка 0
-        </button>
-      </div>
 
       <input
         ref={fileInputRef}
