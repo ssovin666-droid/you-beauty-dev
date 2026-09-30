@@ -1,36 +1,51 @@
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import datetime
 from difflib import SequenceMatcher
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Product, Store, StoreCatalogItem
+from app.models import (
+    Offer,
+    Product,
+    Store,
+    StoreCatalogItem,
+)
 
 
 AUTO_MATCH_THRESHOLD = 90.0
 POSSIBLE_MATCH_THRESHOLD = 80.0
-MAX_CANDIDATES = 300
+MAX_CANDIDATES = 1000
 
 
 @dataclass
 class MatchResult:
     matched: bool
     confidence: float
+
     catalog_item_id: int | None
     external_id: str | None
+
+    store_id: int | None
     store: str | None
+
     brand: str | None
     name: str | None
     size: str | None
     variant: str | None
+
     current_price: float | None
     old_price: float | None
     currency: str | None
+
     available: bool | None
+
     affiliate_url: str | None
     product_url: str | None
+
+    offer_id: int | None = None
 
 
 def normalize_text(
@@ -146,7 +161,9 @@ def remove_brand_from_name(
         normalized_brand.split()
     )
 
-    name_tokens = normalized_name.split()
+    name_tokens = (
+        normalized_name.split()
+    )
 
     cleaned = [
         token
@@ -180,13 +197,8 @@ def token_score(
     a: str,
     b: str,
 ) -> float:
-    tokens_a = tokenize(
-        a
-    )
-
-    tokens_b = tokenize(
-        b
-    )
+    tokens_a = tokenize(a)
+    tokens_b = tokenize(b)
 
     if not tokens_a or not tokens_b:
         return 0.0
@@ -273,14 +285,18 @@ def calculate_match_score(
         else None
     )
 
-    product_name = remove_brand_from_name(
-        product.name,
-        product_brand,
+    product_name = (
+        remove_brand_from_name(
+            product.name,
+            product_brand,
+        )
     )
 
-    candidate_name = remove_brand_from_name(
-        candidate.name,
-        candidate.brand_name,
+    candidate_name = (
+        remove_brand_from_name(
+            candidate.name,
+            candidate.brand_name,
+        )
     )
 
     name_sequence = sequence_score(
@@ -304,12 +320,17 @@ def calculate_match_score(
 
     remaining_weight = 0.25
 
-    candidate_size_score = size_score(
-        product.size,
-        candidate.size,
+    candidate_size_score = (
+        size_score(
+            product.size,
+            candidate.size,
+        )
     )
 
-    if candidate_size_score is not None:
+    if (
+        candidate_size_score
+        is not None
+    ):
         total_score += (
             candidate_size_score
             * 0.15
@@ -317,12 +338,17 @@ def calculate_match_score(
 
         remaining_weight -= 0.15
 
-    candidate_variant_score = variant_score(
-        product.variant,
-        candidate.variant,
+    candidate_variant_score = (
+        variant_score(
+            product.variant,
+            candidate.variant,
+        )
     )
 
-    if candidate_variant_score is not None:
+    if (
+        candidate_variant_score
+        is not None
+    ):
         total_score += (
             candidate_variant_score
             * 0.10
@@ -342,6 +368,38 @@ def calculate_match_score(
             100.0,
         ),
         2,
+    )
+
+
+def empty_result(
+    store: Store | None = None,
+) -> MatchResult:
+    return MatchResult(
+        matched=False,
+        confidence=0.0,
+        catalog_item_id=None,
+        external_id=None,
+        store_id=(
+            store.id
+            if store
+            else None
+        ),
+        store=(
+            store.name
+            if store
+            else None
+        ),
+        brand=None,
+        name=None,
+        size=None,
+        variant=None,
+        current_price=None,
+        old_price=None,
+        currency=None,
+        available=None,
+        affiliate_url=None,
+        product_url=None,
+        offer_id=None,
     )
 
 
@@ -367,8 +425,10 @@ def get_candidates(
         else None
     )
 
-    brand_normalized = normalize_text(
-        brand_name
+    brand_normalized = (
+        normalize_text(
+            brand_name
+        )
     )
 
     if not brand_normalized:
@@ -381,8 +441,10 @@ def get_candidates(
         .where(
             StoreCatalogItem.store_id
             == store.id,
+
             StoreCatalogItem.brand_normalized
             == brand_normalized,
+
             StoreCatalogItem.available.is_(
                 True
             ),
@@ -410,23 +472,7 @@ def find_best_match(
     )
 
     if not store:
-        return MatchResult(
-            matched=False,
-            confidence=0.0,
-            catalog_item_id=None,
-            external_id=None,
-            store=None,
-            brand=None,
-            name=None,
-            size=None,
-            variant=None,
-            current_price=None,
-            old_price=None,
-            currency=None,
-            available=None,
-            affiliate_url=None,
-            product_url=None,
-        )
+        return empty_result()
 
     candidates = get_candidates(
         db,
@@ -435,35 +481,19 @@ def find_best_match(
     )
 
     if not candidates:
-        return MatchResult(
-            matched=False,
-            confidence=0.0,
-            catalog_item_id=None,
-            external_id=None,
-            store=store.name,
-            brand=(
-                product.brand.name
-                if product.brand
-                else None
-            ),
-            name=None,
-            size=None,
-            variant=None,
-            current_price=None,
-            old_price=None,
-            currency=None,
-            available=None,
-            affiliate_url=None,
-            product_url=None,
+        return empty_result(
+            store
         )
 
     best_candidate = None
     best_score = 0.0
 
     for candidate in candidates:
-        score = calculate_match_score(
-            product,
-            candidate,
+        score = (
+            calculate_match_score(
+                product,
+                candidate,
+            )
         )
 
         if score > best_score:
@@ -471,22 +501,8 @@ def find_best_match(
             best_candidate = candidate
 
     if not best_candidate:
-        return MatchResult(
-            matched=False,
-            confidence=0.0,
-            catalog_item_id=None,
-            external_id=None,
-            store=store.name,
-            brand=None,
-            name=None,
-            size=None,
-            variant=None,
-            current_price=None,
-            old_price=None,
-            currency=None,
-            available=None,
-            affiliate_url=None,
-            product_url=None,
+        return empty_result(
+            store
         )
 
     return MatchResult(
@@ -501,6 +517,7 @@ def find_best_match(
         external_id=(
             best_candidate.external_id
         ),
+        store_id=store.id,
         store=store.name,
         brand=(
             best_candidate.brand_name
@@ -542,7 +559,88 @@ def find_best_match(
         product_url=(
             best_candidate.product_url
         ),
+        offer_id=None,
     )
+
+
+def create_or_update_offer(
+    db: Session,
+    product: Product,
+    catalog_item: StoreCatalogItem,
+) -> Offer:
+    offer = db.scalar(
+        select(Offer).where(
+            Offer.product_id
+            == product.id,
+
+            Offer.store_id
+            == catalog_item.store_id,
+        )
+    )
+
+    product_url = (
+        catalog_item.product_url
+        or catalog_item.affiliate_url
+        or ""
+    )
+
+    if not offer:
+        offer = Offer(
+            product_id=product.id,
+            store_id=(
+                catalog_item.store_id
+            ),
+            product_url=product_url,
+            affiliate_url=(
+                catalog_item.affiliate_url
+            ),
+            current_price=(
+                catalog_item.current_price
+            ),
+            old_price=(
+                catalog_item.old_price
+            ),
+            in_stock=(
+                catalog_item.available
+            ),
+            updated_at=datetime.utcnow(),
+        )
+
+        db.add(
+            offer
+        )
+
+        db.flush()
+
+        return offer
+
+    offer.product_url = (
+        product_url
+    )
+
+    offer.affiliate_url = (
+        catalog_item.affiliate_url
+    )
+
+    offer.current_price = (
+        catalog_item.current_price
+    )
+
+    offer.old_price = (
+        catalog_item.old_price
+    )
+
+    offer.in_stock = (
+        catalog_item.available
+    )
+
+    offer.updated_at = (
+        datetime.utcnow()
+    )
+
+    db.flush()
+
+    return offer
 
 
 def link_product_to_best_match(
@@ -570,10 +668,22 @@ def link_product_to_best_match(
     if not catalog_item:
         return result
 
+    # Запоминаем, к какому нашему
+    # продукту относится строка фида.
     catalog_item.product_id = (
         product.id
     )
 
+    offer = create_or_update_offer(
+        db,
+        product,
+        catalog_item,
+    )
+
     db.commit()
+
+    result.offer_id = (
+        offer.id
+    )
 
     return result
