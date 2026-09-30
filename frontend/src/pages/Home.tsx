@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 
+import type { Tab } from '../components/BottomNav'
 import { getTelegramAuthHeaders } from '../lib/telegram'
-
-type Tab = 'wishlist' | 'shelf' | 'brands'
 
 type HomeProps = {
   go: (tab: Tab) => void
@@ -28,36 +27,9 @@ type TrackedItem = {
   }
 }
 
-type SavedBrand = {
-  name: string
-  followed: boolean
-}
-
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
   'https://you-beauty-dev-production.up.railway.app/api'
-
-const BRANDS_KEY =
-  'you_beauty_followed_brands'
-
-function readBrands(): SavedBrand[] {
-  try {
-    const raw =
-      localStorage.getItem(BRANDS_KEY)
-
-    if (!raw) return []
-
-    const parsed = JSON.parse(raw)
-
-    return Array.isArray(parsed)
-      ? parsed.filter(
-          brand => brand.followed
-        )
-      : []
-  } catch {
-    return []
-  }
-}
 
 export function Home({ go }: HomeProps) {
   const [wishlist, setWishlist] =
@@ -65,9 +37,6 @@ export function Home({ go }: HomeProps) {
 
   const [shelf, setShelf] =
     useState<TrackedItem[]>([])
-
-  const [brands, setBrands] =
-    useState<SavedBrand[]>([])
 
   const [loading, setLoading] =
     useState(true)
@@ -90,7 +59,6 @@ export function Home({ go }: HomeProps) {
       ) {
         setWishlist([])
         setShelf([])
-        setBrands(readBrands())
 
         setError(
           'Открой You Beauty через Telegram, чтобы загрузить сохранения.'
@@ -147,10 +115,6 @@ export function Home({ go }: HomeProps) {
         Array.isArray(shelfData)
           ? shelfData
           : []
-      )
-
-      setBrands(
-        readBrands()
       )
     } catch (err) {
       console.error(err)
@@ -212,31 +176,19 @@ export function Home({ go }: HomeProps) {
             You Beauty
           </h1>
         </div>
-
-        <button
-          className="icon-btn"
-          aria-label="Профиль"
-          onClick={() => {
-            alert(
-              'Профиль пользователя подключим следующим этапом.'
-            )
-          }}
-        >
-          ◎
-        </button>
       </header>
 
       <section className="hero">
         <div className="hero-copy">
           <h2>
-            Твоя косметика
+            Твои текущие
             <br />
-            под контролем
+            скидки
           </h2>
 
           <p className="mono">
-            Добавляй любимые средства
-            и узнавай о скидках первой.
+            Пока ни один из твоих
+            товаров не на скидке
           </p>
         </div>
 
@@ -337,54 +289,6 @@ export function Home({ go }: HomeProps) {
             ›
           </span>
         </button>
-      </section>
-
-      <section className="brand-strip">
-        <div className="section-heading">
-          <h3>
-            Бренды
-          </h3>
-
-          <button
-            onClick={() =>
-              go('brands')
-            }
-          >
-            Все бренды →
-          </button>
-        </div>
-
-        <div className="brand-pills">
-          {brands
-            .slice(0, 3)
-            .map(brand => (
-              <span key={brand.name}>
-                {brand.name}
-              </span>
-            ))}
-
-          <button
-            onClick={() =>
-              go('brands')
-            }
-          >
-            ＋ Добавить
-          </button>
-        </div>
-
-        {brands.length === 0 && (
-          <div
-            className="mono"
-            style={{
-              marginTop: '12px',
-              opacity: 0.5,
-              fontSize: '12px',
-            }}
-          >
-            Ты пока не отслеживаешь
-            ни одного бренда
-          </div>
-        )}
       </section>
     </main>
   )
