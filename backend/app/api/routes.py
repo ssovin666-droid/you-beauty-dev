@@ -268,6 +268,7 @@ def get_offer_payload(
 def ensure_product_offer(
     db: Session,
     product: Product,
+    force: bool = False,
 ):
     existing_offer = db.scalar(
         select(Offer.id)
@@ -278,7 +279,10 @@ def ensure_product_offer(
         .limit(1)
     )
 
-    if existing_offer:
+    if (
+        existing_offer
+        and not force
+    ):
         return
 
     try:
@@ -294,7 +298,9 @@ def ensure_product_offer(
             "PRODUCT_MATCH | "
             f"product_id={product.id} "
             f"matched={result.matched} "
-            f"confidence={result.confidence}"
+            f"confidence={result.confidence} "
+            f"offer_id={result.offer_id} "
+            f"url={result.product_url}"
         )
 
     except Exception as exc:
@@ -711,6 +717,7 @@ def add_recognized_product(
     ensure_product_offer(
         db,
         product,
+        force=True,
     )
 
     return {
