@@ -958,6 +958,45 @@ export function Wishlist() {
                 <PriceBlock
                   offer={item.offer}
                 />
+
+                {item.offer &&
+                  (item.offer.affiliate_url ||
+                    item.offer.product_url) && (
+                    <a
+                      href={`${API_BASE}/out/${item.offer.id}?source=wishlist`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent:
+                          'space-between',
+                        width: '100%',
+                        boxSizing:
+                          'border-box',
+                        marginTop: '14px',
+                        padding:
+                          '14px 16px',
+                        borderRadius:
+                          '16px',
+                        background:
+                          '#f1f5f6',
+                        color: '#1f2b30',
+                        textDecoration:
+                          'none',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <span>
+                        Открыть в Золотом Яблоке
+                      </span>
+
+                      <span>
+                        →
+                      </span>
+                    </a>
+                  )}
               </article>
             ))}
           </div>
