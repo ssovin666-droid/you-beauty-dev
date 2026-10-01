@@ -31,11 +31,155 @@ type SavedProduct = {
   } | null
 }
 
+type Offer = {
+  id: number
+  store: {
+    id: number
+    name: string
+    slug: string
+  }
+  current_price: number | null
+  old_price: number | null
+  currency: string | null
+  has_discount: boolean
+  discount_percent: number | null
+  in_stock: boolean
+  product_url: string
+  affiliate_url: string | null
+}
+
 type TrackedItem = {
   id: number
   list_type: string
   notifications_enabled: boolean
   product: SavedProduct
+  offer: Offer | null
+}
+
+function formatPrice(
+  value: number | null,
+  currency: string | null
+) {
+  if (value === null) return null
+
+  const formatted = new Intl.NumberFormat(
+    'ru-RU',
+    {
+      maximumFractionDigits:
+        Number.isInteger(value) ? 0 : 2,
+    }
+  ).format(value)
+
+  if (currency === 'RUB') {
+    return `${formatted} ₽`
+  }
+
+  if (currency) {
+    return `${formatted} ${currency}`
+  }
+
+  return formatted
+}
+
+function PriceBlock({
+  offer,
+}: {
+  offer: Offer | null
+}) {
+  if (
+    !offer ||
+    offer.current_price === null
+  ) {
+    return (
+      <div
+        className="mono"
+        style={{
+          marginTop: '16px',
+          paddingTop: '14px',
+          borderTop:
+            '1px solid rgba(20,30,35,0.07)',
+          fontSize: '11px',
+          opacity: 0.45,
+        }}
+      >
+        Цена пока не найдена
+      </div>
+    )
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: '16px',
+        paddingTop: '14px',
+        borderTop:
+          '1px solid rgba(20,30,35,0.07)',
+      }}
+    >
+      {offer.has_discount ? (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: '10px',
+            flexWrap: 'wrap',
+          }}
+        >
+          {offer.old_price !== null && (
+            <span
+              className="mono"
+              style={{
+                fontSize: '13px',
+                opacity: 0.45,
+                textDecoration:
+                  'line-through',
+              }}
+            >
+              {formatPrice(
+                offer.old_price,
+                offer.currency
+              )}
+            </span>
+          )}
+
+          <strong
+            style={{
+              fontSize: '20px',
+              color: '#c94f5c',
+            }}
+          >
+            {formatPrice(
+              offer.current_price,
+              offer.currency
+            )}
+          </strong>
+
+          {offer.discount_percent !== null && (
+            <span
+              className="mono"
+              style={{
+                fontSize: '11px',
+                color: '#c94f5c',
+              }}
+            >
+              −{offer.discount_percent}%
+            </span>
+          )}
+        </div>
+      ) : (
+        <strong
+          style={{
+            fontSize: '19px',
+          }}
+        >
+          {formatPrice(
+            offer.current_price,
+            offer.currency
+          )}
+        </strong>
+      )}
+    </div>
+  )
 }
 
 export function Shelf() {
@@ -294,6 +438,18 @@ export function Shelf() {
     }
   }
 
+  const discountCount = items.filter(
+    item => item.offer?.has_discount
+  ).length
+
+  const discountLabel =
+    discountCount === 1
+      ? '1 скидка сегодня'
+      : discountCount >= 2 &&
+          discountCount <= 4
+        ? `${discountCount} скидки сегодня`
+        : `${discountCount} скидок сегодня`
+
   return (
     <main className="screen list-screen">
       <header className="list-header">
@@ -301,7 +457,12 @@ export function Shelf() {
           <h1>Полка</h1>
 
           <div className="mono subhead">
-            Твои любимые средства всегда под контролем
+            {items.length}{' '}
+            {items.length === 1
+              ? 'товар'
+              : 'товаров'}
+            {' · '}
+            {discountLabel}
           </div>
         </div>
 
@@ -620,6 +781,10 @@ export function Shelf() {
                       .join(' · ')}
                   </div>
                 )}
+
+                <PriceBlock
+                  offer={item.offer}
+                />
               </article>
             ))}
           </div>
