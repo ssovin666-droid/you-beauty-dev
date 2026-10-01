@@ -36,26 +36,21 @@ from app.schemas.catalog import (
     TrackProductIn,
     TrackRecognizedProductIn,
 )
-from app.services.golden_apple_feed import (
-    sync_golden_apple_feed,
-)
+from app.services.golden_apple_feed import sync_golden_apple_feed
 from app.services.product_matcher import (
+    calculate_match_score,
+    get_candidates,
+    get_store,
     link_product_to_best_match,
 )
-from app.services.recognition import (
-    recognize_product_image,
-)
-from app.services.telegram_auth import (
-    get_current_user,
-)
+from app.services.recognition import recognize_product_image
+from app.services.telegram_auth import get_current_user
 
 
 router = APIRouter()
 
 
-def normalize_text(
-    value: str | None,
-) -> str:
+def normalize_text(value: str | None) -> str:
     if not value:
         return ""
 
@@ -64,9 +59,7 @@ def normalize_text(
     )
 
 
-def make_slug(
-    value: str,
-) -> str:
+def make_slug(value: str) -> str:
     normalized = unicodedata.normalize(
         "NFKD",
         value,
@@ -172,7 +165,8 @@ def get_offer_payload(
         )
         .join(
             Store,
-            Store.id == Offer.store_id,
+            Store.id
+            == Offer.store_id,
         )
         .where(
             Offer.product_id
@@ -414,7 +408,9 @@ def tracked(
     if list_type:
         try:
             parsed_list_type = (
-                ListType(list_type)
+                ListType(
+                    list_type
+                )
             )
         except ValueError:
             raise HTTPException(
@@ -501,8 +497,13 @@ def add_tracked(
     )
 
     if existing:
-        existing.list_type = list_type
-        existing.notifications_enabled = True
+        existing.list_type = (
+            list_type
+        )
+
+        existing.notifications_enabled = (
+            True
+        )
 
         db.commit()
         db.refresh(existing)
@@ -517,7 +518,9 @@ def add_tracked(
             "tracked_item_id": (
                 existing.id
             ),
-            "product_id": product.id,
+            "product_id": (
+                product.id
+            ),
             "list_type": (
                 list_type.value
             ),
@@ -546,8 +549,12 @@ def add_tracked(
 
     return {
         "ok": True,
-        "tracked_item_id": row.id,
-        "product_id": product.id,
+        "tracked_item_id": (
+            row.id
+        ),
+        "product_id": (
+            product.id
+        ),
         "list_type": (
             list_type.value
         ),
@@ -559,7 +566,9 @@ def add_tracked(
     }
 
 
-@router.post("/tracked/recognized")
+@router.post(
+    "/tracked/recognized"
+)
 def add_recognized_product(
     payload: TrackRecognizedProductIn,
     current_user: User = Depends(
@@ -601,9 +610,11 @@ def add_recognized_product(
         )
 
         if brand_name:
-            brand = get_or_create_brand(
-                db,
-                brand_name,
+            brand = (
+                get_or_create_brand(
+                    db,
+                    brand_name,
+                )
             )
 
     canonical_key = (
@@ -685,17 +696,31 @@ def add_recognized_product(
             True
         )
 
-        tracked_item = existing
-
-    else:
-        tracked_item = TrackedItem(
-            user_id=current_user.id,
-            product_id=product.id,
-            list_type=list_type,
-            notifications_enabled=True,
+        tracked_item = (
+            existing
         )
 
-        db.add(tracked_item)
+    else:
+        tracked_item = (
+            TrackedItem(
+                user_id=(
+                    current_user.id
+                ),
+                product_id=(
+                    product.id
+                ),
+                list_type=(
+                    list_type
+                ),
+                notifications_enabled=(
+                    True
+                ),
+            )
+        )
+
+        db.add(
+            tracked_item
+        )
 
     db.commit()
 
@@ -712,7 +737,9 @@ def add_recognized_product(
         )
     )
 
-    db.refresh(tracked_item)
+    db.refresh(
+        tracked_item
+    )
 
     ensure_product_offer(
         db,
@@ -725,7 +752,9 @@ def add_recognized_product(
         "tracked_item_id": (
             tracked_item.id
         ),
-        "product_id": product.id,
+        "product_id": (
+            product.id
+        ),
         "list_type": (
             list_type.value
         ),
@@ -742,7 +771,9 @@ def add_recognized_product(
     }
 
 
-@router.get("/brand-subscriptions")
+@router.get(
+    "/brand-subscriptions"
+)
 def brand_subscriptions(
     current_user: User = Depends(
         get_current_user
@@ -773,7 +804,9 @@ def brand_subscriptions(
 
     return [
         {
-            "id": subscription.id,
+            "id": (
+                subscription.id
+            ),
             "enabled": (
                 subscription.enabled
             ),
@@ -788,7 +821,9 @@ def brand_subscriptions(
     ]
 
 
-@router.post("/brand-subscriptions")
+@router.post(
+    "/brand-subscriptions"
+)
 def follow_brand(
     payload: FollowBrandIn,
     current_user: User = Depends(
@@ -814,7 +849,9 @@ def follow_brand(
     )
 
     subscription = db.scalar(
-        select(BrandSubscription).where(
+        select(
+            BrandSubscription
+        ).where(
             BrandSubscription.user_id
             == current_user.id,
             BrandSubscription.brand_id
@@ -823,21 +860,31 @@ def follow_brand(
     )
 
     if subscription:
-        subscription.enabled = True
+        subscription.enabled = (
+            True
+        )
 
     else:
         subscription = (
             BrandSubscription(
-                user_id=current_user.id,
-                brand_id=brand.id,
+                user_id=(
+                    current_user.id
+                ),
+                brand_id=(
+                    brand.id
+                ),
                 enabled=True,
             )
         )
 
-        db.add(subscription)
+        db.add(
+            subscription
+        )
 
     db.commit()
-    db.refresh(subscription)
+    db.refresh(
+        subscription
+    )
 
     return {
         "ok": True,
@@ -863,7 +910,9 @@ def unfollow_brand(
     db: Session = Depends(get_db),
 ):
     subscription = db.scalar(
-        select(BrandSubscription).where(
+        select(
+            BrandSubscription
+        ).where(
             BrandSubscription.user_id
             == current_user.id,
             BrandSubscription.brand_id
@@ -880,7 +929,10 @@ def unfollow_brand(
             ),
         )
 
-    db.delete(subscription)
+    db.delete(
+        subscription
+    )
+
     db.commit()
 
     return {
@@ -892,7 +944,9 @@ def unfollow_brand(
 async def recognize(
     file: UploadFile,
 ):
-    content = await file.read()
+    content = (
+        await file.read()
+    )
 
     if not content:
         raise HTTPException(
@@ -916,11 +970,15 @@ async def recognize(
 
     return {
         "status": "ok",
-        "result": asdict(result),
+        "result": asdict(
+            result
+        ),
     }
 
 
-@router.get("/out/{offer_id}")
+@router.get(
+    "/out/{offer_id}"
+)
 def outbound(
     offer_id: int,
     user_id: int | None = None,
@@ -948,7 +1006,10 @@ def outbound(
         ),
     )
 
-    db.add(click)
+    db.add(
+        click
+    )
+
     db.commit()
 
     target = (
@@ -1004,5 +1065,231 @@ def start_golden_apple_sync(
         "status": "started",
         "message": (
             "Golden Apple sync started"
+        ),
+    }
+
+
+@router.get(
+    "/admin/match/debug"
+)
+def debug_product_matching(
+    limit: int = 10,
+    x_admin_key: str = Header(
+        default="",
+        alias="X-Admin-Key",
+    ),
+    db: Session = Depends(get_db),
+):
+    expected_key = os.getenv(
+        "ADMIN_SYNC_KEY",
+        "",
+    )
+
+    if not expected_key:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "ADMIN_SYNC_KEY "
+                "is not configured"
+            ),
+        )
+
+    if (
+        x_admin_key
+        != expected_key
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden",
+        )
+
+    limit = max(
+        1,
+        min(
+            limit,
+            30,
+        ),
+    )
+
+    tracked_rows = list(
+        db.scalars(
+            select(
+                TrackedItem
+            )
+            .options(
+                joinedload(
+                    TrackedItem.product
+                ).joinedload(
+                    Product.brand
+                )
+            )
+            .order_by(
+                TrackedItem.id.desc()
+            )
+            .limit(
+                limit
+            )
+        ).all()
+    )
+
+    store = get_store(
+        db,
+        "golden-apple",
+    )
+
+    if not store:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Golden Apple store "
+                "not found"
+            ),
+        )
+
+    diagnostics = []
+
+    for tracked in tracked_rows:
+        product = (
+            tracked.product
+        )
+
+        candidates = (
+            get_candidates(
+                db,
+                product,
+                store,
+            )
+        )
+
+        scored_candidates = []
+
+        for candidate in candidates:
+            score = (
+                calculate_match_score(
+                    product,
+                    candidate,
+                )
+            )
+
+            scored_candidates.append(
+                {
+                    "score": (
+                        score
+                    ),
+                    "catalog_item_id": (
+                        candidate.id
+                    ),
+                    "external_id": (
+                        candidate.external_id
+                    ),
+                    "brand": (
+                        candidate.brand_name
+                    ),
+                    "name": (
+                        candidate.name
+                    ),
+                    "model": (
+                        candidate.model
+                    ),
+                    "size": (
+                        candidate.size
+                    ),
+                    "variant": (
+                        candidate.variant
+                    ),
+                    "current_price": (
+                        float(
+                            candidate.current_price
+                        )
+                        if candidate.current_price
+                        is not None
+                        else None
+                    ),
+                    "old_price": (
+                        float(
+                            candidate.old_price
+                        )
+                        if candidate.old_price
+                        is not None
+                        else None
+                    ),
+                    "currency": (
+                        candidate.currency
+                    ),
+                    "product_url": (
+                        candidate.product_url
+                    ),
+                    "affiliate_url": (
+                        candidate.affiliate_url
+                    ),
+                }
+            )
+
+        scored_candidates.sort(
+            key=lambda item: (
+                item["score"]
+            ),
+            reverse=True,
+        )
+
+        diagnostics.append(
+            {
+                "tracked_item_id": (
+                    tracked.id
+                ),
+                "product_id": (
+                    product.id
+                ),
+                "list_type": (
+                    tracked.list_type.value
+                    if isinstance(
+                        tracked.list_type,
+                        ListType,
+                    )
+                    else tracked.list_type
+                ),
+                "recognized": {
+                    "brand": (
+                        product.brand.name
+                        if product.brand
+                        else None
+                    ),
+                    "name": (
+                        product.name
+                    ),
+                    "size": (
+                        product.size
+                    ),
+                    "variant": (
+                        product.variant
+                    ),
+                    "category": (
+                        product.category
+                    ),
+                },
+                "candidate_count": (
+                    len(candidates)
+                ),
+                "top_candidates": (
+                    scored_candidates[:10]
+                ),
+            }
+        )
+
+    return {
+        "ok": True,
+        "store": {
+            "id": (
+                store.id
+            ),
+            "name": (
+                store.name
+            ),
+            "slug": (
+                store.slug
+            ),
+        },
+        "items": (
+            diagnostics
         ),
     }
