@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@amplitude/unified": "^1",
     "@vitejs/plugin-react": "latest",
     "vite": "latest",
     "typescript": "latest",
