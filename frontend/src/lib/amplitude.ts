@@ -54,3 +54,23 @@ export function trackOpenedYouBeauty() {
 
   openedTracked = true
 }
+
+export function trackStartedAddingProductToWishlist() {
+  if (!initialized) {
+    return
+  }
+
+  amplitude.track(
+    'Started Adding Product to Wishlist'
+  )
+}
+
+export function trackAddedProductToWishlist() {
+  if (!initialized) {
+    return
+  }
+
+  amplitude.track(
+    'Added Product to Wishlist'
+  )
+}
