@@ -213,6 +213,9 @@ export function Wishlist() {
   const [items, setItems] =
     useState<TrackedItem[]>([])
 
+  const [deletingItemId, setDeletingItemId] =
+    useState<number | null>(null)
+
   useEffect(() => {
     loadWishlist()
   }, [])
@@ -435,6 +438,75 @@ export function Wishlist() {
       )
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function deleteWishlistItem(
+    trackedItemId: number
+  ) {
+    const confirmed = window.confirm(
+      'Удалить этот товар из Wishlist?'
+    )
+
+    if (!confirmed) return
+
+    setDeletingItemId(trackedItemId)
+    setAccountError(null)
+    setSuccess(null)
+
+    try {
+      const authHeaders =
+        getTelegramAuthHeaders()
+
+      if (
+        !authHeaders[
+          'X-Telegram-Init-Data'
+        ]
+      ) {
+        throw new Error(
+          'Открой You Beauty через Telegram, чтобы удалить товар.'
+        )
+      }
+
+      const response = await fetch(
+        `${API_BASE}/tracked/${trackedItemId}`,
+        {
+          method: 'DELETE',
+          headers: authHeaders,
+        }
+      )
+
+      const data = await response
+        .json()
+        .catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(
+          data?.detail ||
+            `Ошибка удаления: ${response.status}`
+        )
+      }
+
+      setItems(currentItems =>
+        currentItems.filter(
+          item =>
+            item.id !== trackedItemId
+        )
+      )
+
+      setSuccess(
+        'Товар удалён из Wishlist'
+      )
+    } catch (err) {
+      console.error(err)
+
+      setAccountError(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось удалить товар'
+      )
+    } finally {
+      setDeletingItemId(null)
     }
   }
 
@@ -997,6 +1069,51 @@ export function Wishlist() {
                       </span>
                     </a>
                   )}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    deleteWishlistItem(
+                      item.id
+                    )
+                  }
+                  disabled={
+                    deletingItemId ===
+                    item.id
+                  }
+                  style={{
+                    width: '100%',
+                    marginTop: '10px',
+                    padding:
+                      '12px 16px',
+                    borderRadius:
+                      '16px',
+                    border:
+                      '1px solid rgba(155,76,86,0.14)',
+                    background:
+                      '#fffafa',
+                    color:
+                      '#9b4c56',
+                    fontSize:
+                      '12px',
+                    fontWeight: 600,
+                    cursor:
+                      deletingItemId ===
+                      item.id
+                        ? 'default'
+                        : 'pointer',
+                    opacity:
+                      deletingItemId ===
+                      item.id
+                        ? 0.55
+                        : 1,
+                  }}
+                >
+                  {deletingItemId ===
+                  item.id
+                    ? 'Удаляю…'
+                    : 'Удалить из Wishlist'}
+                </button>
               </article>
             ))}
           </div>
