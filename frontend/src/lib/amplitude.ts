@@ -74,3 +74,23 @@ export function trackAddedProductToWishlist() {
     'Added Product to Wishlist'
   )
 }
+
+export function trackStartedAddingProductToShelf() {
+  if (!initialized) {
+    return
+  }
+
+  amplitude.track(
+    'Started Adding Product to Shelf'
+  )
+}
+
+export function trackAddedProductToShelf() {
+  if (!initialized) {
+    return
+  }
+
+  amplitude.track(
+    'Added Product to Shelf'
+  )
+}
