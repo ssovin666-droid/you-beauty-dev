@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 
 import { getTelegramAuthHeaders } from '../lib/telegram'
+import {
+  trackAddedProductToWishlist,
+  trackStartedAddingProductToWishlist,
+} from '../lib/amplitude'
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
@@ -283,6 +287,7 @@ export function Wishlist() {
   }
 
   function openFilePicker() {
+    trackStartedAddingProductToWishlist()
     fileInputRef.current?.click()
   }
 
@@ -412,6 +417,8 @@ export function Wishlist() {
             `Ошибка сохранения: ${response.status}`
         )
       }
+
+      trackAddedProductToWishlist()
 
       await loadWishlist()
 
