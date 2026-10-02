@@ -1,4 +1,5 @@
 from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,8 +11,12 @@ class Settings(BaseSettings):
     bot_username: str = "you_beauty_bot"
     mini_app_url: str = "http://localhost:5173"
     openai_api_key: str = ""
+    amplitude_api_key: str = ""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+    )
 
 
 @lru_cache
