@@ -46,6 +46,10 @@ class User(Base):
         String(255)
     )
 
+    traffic_source: Mapped[str | None] = mapped_column(
+        String(500)
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=datetime.utcnow,
@@ -271,8 +275,6 @@ class StoreCatalogItem(Base):
         index=True,
     )
 
-    # После успешного сопоставления здесь
-    # запоминаем наш канонический Product.
     product_id: Mapped[int | None] = mapped_column(
         ForeignKey(
             "products.id",
@@ -281,7 +283,6 @@ class StoreCatalogItem(Base):
         index=True,
     )
 
-    # ID товара внутри фида магазина.
     external_id: Mapped[str] = mapped_column(
         String(255)
     )
@@ -363,8 +364,6 @@ class StoreCatalogItem(Base):
         index=True,
     )
 
-    # Сохраняем дополнительные параметры фида,
-    # чтобы не потерять оттенок, объём и т.д.
     raw_params: Mapped[dict | None] = mapped_column(
         JSON
     )
