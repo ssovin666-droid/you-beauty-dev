@@ -545,14 +545,89 @@ export function Shelf() {
           </div>
         </div>
 
-        <div className="header-actions">
-          <button className="icon-btn">
-            ⌕
-          </button>
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'relative',
+            width: '58px',
+            height: '58px',
+            flex: '0 0 auto',
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              width: '44px',
+              height: '52px',
+              left: '5px',
+              top: '2px',
+              borderRadius:
+                '54% 46% 58% 42% / 45% 55% 45% 55%',
+              transform:
+                'rotate(17deg)',
+              background:
+                'linear-gradient(145deg, rgba(255,255,255,.92) 3%, rgba(221,236,244,.72) 34%, rgba(187,211,229,.54) 60%, rgba(237,203,214,.44) 100%)',
+              border:
+                '1px solid rgba(255,255,255,.9)',
+              boxShadow:
+                'inset 6px 5px 12px rgba(255,255,255,.68), 0 8px 15px rgba(72,97,116,.10)',
+            }}
+          />
 
-          <button className="icon-btn">
-            ☷
-          </button>
+          <div
+            style={{
+              position: 'absolute',
+              width: '31px',
+              height: '39px',
+              right: '2px',
+              bottom: '3px',
+              borderRadius:
+                '48% 52% 44% 56% / 55% 45% 55% 45%',
+              transform:
+                'rotate(-24deg)',
+              background:
+                'linear-gradient(155deg, rgba(255,255,255,.78), rgba(226,212,228,.48) 48%, rgba(181,211,229,.48))',
+              border:
+                '1px solid rgba(255,255,255,.8)',
+              boxShadow:
+                'inset 4px 5px 9px rgba(255,255,255,.6), 0 6px 12px rgba(79,103,122,.08)',
+            }}
+          />
+
+          <div
+            style={{
+              position: 'absolute',
+              width: '18px',
+              height: '18px',
+              left: '21px',
+              top: '20px',
+              borderRadius: '50%',
+              background:
+                'radial-gradient(circle at 32% 27%, #ffffff 0 14%, #edf5f8 24%, #d7e7ee 54%, #e4cdd2 100%)',
+              border:
+                '1px solid rgba(255,255,255,.95)',
+              boxShadow:
+                '0 4px 9px rgba(72,101,122,.14), inset 2px 2px 4px rgba(255,255,255,.88)',
+              zIndex: 3,
+            }}
+          />
+
+          <div
+            style={{
+              position: 'absolute',
+              width: '14px',
+              height: '3px',
+              left: '12px',
+              top: '12px',
+              borderRadius: '999px',
+              transform:
+                'rotate(-36deg)',
+              background:
+                'rgba(255,255,255,.8)',
+              filter: 'blur(.4px)',
+              zIndex: 4,
+            }}
+          />
         </div>
       </header>
 
