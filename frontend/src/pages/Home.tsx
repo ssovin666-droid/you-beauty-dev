@@ -7,6 +7,23 @@ type HomeProps = {
   go: (tab: Tab) => void
 }
 
+type Offer = {
+  id: number
+  store: {
+    id: number
+    name: string
+    slug: string
+  }
+  current_price: number | null
+  old_price: number | null
+  currency: string | null
+  has_discount: boolean
+  discount_percent: number | null
+  in_stock: boolean
+  product_url: string
+  affiliate_url: string | null
+}
+
 type TrackedItem = {
   id: number
   list_type: 'wishlist' | 'shelf'
@@ -25,6 +42,7 @@ type TrackedItem = {
       image_url: string | null
     } | null
   }
+  offer: Offer | null
 }
 
 const API_BASE =
@@ -164,6 +182,81 @@ export function Home({ go }: HomeProps) {
     }
   }, [])
 
+  const allTrackedItems = [
+    ...wishlist,
+    ...shelf,
+  ]
+
+  const discountedItems =
+    allTrackedItems.filter(
+      item =>
+        item.offer?.has_discount === true
+    )
+
+  const discountCount =
+    discountedItems.length
+
+  const maxDiscount =
+    discountedItems.reduce(
+      (max, item) => {
+        const discount =
+          item.offer?.discount_percent ?? 0
+
+        return Math.max(
+          max,
+          discount
+        )
+      },
+      0
+    )
+
+  function getDiscountMessage() {
+    if (loading) {
+      return 'Проверяю цены на твои товары…'
+    }
+
+    if (discountCount === 0) {
+      return (
+        <>
+          Пока ни один из твоих
+          <br />
+          товаров не на скидке
+        </>
+      )
+    }
+
+    if (discountCount === 1) {
+      return (
+        <>
+          1 твой товар сейчас
+          <br />
+          продаётся со скидкой
+        </>
+      )
+    }
+
+    if (
+      discountCount >= 2 &&
+      discountCount <= 4
+    ) {
+      return (
+        <>
+          {discountCount} твоих товара сейчас
+          <br />
+          продаются со скидкой
+        </>
+      )
+    }
+
+    return (
+      <>
+        {discountCount} твоих товаров сейчас
+        <br />
+        продаются со скидкой
+      </>
+    )
+  }
+
   return (
     <main className="screen home-screen">
       <header className="topbar">
@@ -187,9 +280,26 @@ export function Home({ go }: HomeProps) {
           </h2>
 
           <p className="mono">
-            Пока ни один из твоих
-            товаров не на скидке
+            {getDiscountMessage()}
           </p>
+
+          {!loading &&
+            discountCount > 0 &&
+            maxDiscount > 0 && (
+              <div
+                className="mono"
+                style={{
+                  marginTop: '10px',
+                  fontSize: '11px',
+                  opacity: 0.6,
+                  letterSpacing:
+                    '0.04em',
+                }}
+              >
+                Максимальная скидка −
+                {maxDiscount}%
+              </div>
+            )}
         </div>
 
         <div
