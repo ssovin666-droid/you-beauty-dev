@@ -312,130 +312,153 @@ export function Home({ go }: HomeProps) {
           <div
             style={{
               position: 'absolute',
-              width: '160px',
-              height: '160px',
-              right: '8%',
+              width: '170px',
+              height: '170px',
+              right: '5%',
               top: '50%',
               transform:
-                'translateY(-50%) rotate(-8deg)',
-              filter:
-                'drop-shadow(0 20px 28px rgba(86,111,130,0.14))',
+                'translateY(-50%)',
             }}
           >
-            <span
+            <div
               style={{
                 position: 'absolute',
-                width: '74px',
-                height: '74px',
-                left: '8px',
+                width: '150px',
+                height: '150px',
+                left: '6px',
                 top: '8px',
-                borderRadius:
-                  '60% 42% 58% 44%',
-                transform:
-                  'rotate(-8deg)',
-                background:
-                  'linear-gradient(145deg, rgba(255,255,255,.95), rgba(198,220,235,.58) 52%, rgba(239,211,217,.48))',
-                border:
-                  '1px solid rgba(255,255,255,.9)',
-                boxShadow:
-                  'inset 8px 10px 18px rgba(255,255,255,.72), 0 9px 20px rgba(83,108,126,.10)',
-              }}
-            />
-
-            <span
-              style={{
-                position: 'absolute',
-                width: '74px',
-                height: '74px',
-                right: '8px',
-                top: '8px',
-                borderRadius:
-                  '60% 42% 58% 44%',
-                transform:
-                  'rotate(82deg)',
-                background:
-                  'linear-gradient(145deg, rgba(255,255,255,.95), rgba(205,226,236,.55) 50%, rgba(238,206,218,.5))',
-                border:
-                  '1px solid rgba(255,255,255,.9)',
-                boxShadow:
-                  'inset 8px 10px 18px rgba(255,255,255,.72), 0 9px 20px rgba(83,108,126,.10)',
-              }}
-            />
-
-            <span
-              style={{
-                position: 'absolute',
-                width: '74px',
-                height: '74px',
-                left: '8px',
-                bottom: '8px',
-                borderRadius:
-                  '60% 42% 58% 44%',
-                transform:
-                  'rotate(-98deg)',
-                background:
-                  'linear-gradient(145deg, rgba(255,255,255,.95), rgba(213,228,237,.52) 48%, rgba(242,214,218,.52))',
-                border:
-                  '1px solid rgba(255,255,255,.9)',
-                boxShadow:
-                  'inset 8px 10px 18px rgba(255,255,255,.72), 0 9px 20px rgba(83,108,126,.10)',
-              }}
-            />
-
-            <span
-              style={{
-                position: 'absolute',
-                width: '74px',
-                height: '74px',
-                right: '8px',
-                bottom: '8px',
-                borderRadius:
-                  '60% 42% 58% 44%',
-                transform:
-                  'rotate(172deg)',
-                background:
-                  'linear-gradient(145deg, rgba(255,255,255,.95), rgba(198,219,234,.55) 50%, rgba(240,208,216,.48))',
-                border:
-                  '1px solid rgba(255,255,255,.9)',
-                boxShadow:
-                  'inset 8px 10px 18px rgba(255,255,255,.72), 0 9px 20px rgba(83,108,126,.10)',
-              }}
-            />
-
-            <span
-              style={{
-                position: 'absolute',
-                width: '42px',
-                height: '42px',
-                left: '50%',
-                top: '50%',
-                transform:
-                  'translate(-50%, -50%)',
                 borderRadius: '50%',
                 background:
-                  'radial-gradient(circle at 32% 26%, #ffffff 0 18%, #dceaf1 44%, #e9cfd3 100%)',
-                border:
-                  '1px solid rgba(255,255,255,.92)',
-                boxShadow:
-                  '0 7px 20px rgba(73,102,125,.16), inset 4px 5px 8px rgba(255,255,255,.82)',
-                zIndex: 2,
+                  'radial-gradient(circle at 38% 30%, rgba(255,255,255,.88), rgba(206,224,237,.28) 44%, rgba(237,207,218,.2) 68%, transparent 74%)',
+                filter: 'blur(1px)',
               }}
             />
 
-            <span
+            <div
               style={{
                 position: 'absolute',
-                width: '37px',
-                height: '12px',
-                left: '28px',
-                top: '32px',
-                borderRadius: '999px',
-                background:
-                  'rgba(255,255,255,.72)',
-                filter: 'blur(2px)',
+                width: '108px',
+                height: '132px',
+                left: '25px',
+                top: '16px',
+                borderRadius:
+                  '54% 46% 58% 42% / 45% 55% 45% 55%',
                 transform:
-                  'rotate(-28deg)',
-                zIndex: 3,
+                  'rotate(17deg)',
+                background:
+                  'linear-gradient(145deg, rgba(255,255,255,.9) 3%, rgba(221,236,244,.7) 32%, rgba(187,211,229,.52) 58%, rgba(237,203,214,.42) 100%)',
+                border:
+                  '1px solid rgba(255,255,255,.88)',
+                boxShadow:
+                  'inset 15px 12px 28px rgba(255,255,255,.65), inset -12px -14px 28px rgba(111,145,170,.09), 0 22px 38px rgba(72,97,116,.12)',
+                backdropFilter:
+                  'blur(12px)',
+              }}
+            />
+
+            <div
+              style={{
+                position: 'absolute',
+                width: '74px',
+                height: '104px',
+                right: '18px',
+                bottom: '16px',
+                borderRadius:
+                  '48% 52% 44% 56% / 55% 45% 55% 45%',
+                transform:
+                  'rotate(-24deg)',
+                background:
+                  'linear-gradient(155deg, rgba(255,255,255,.76), rgba(226,212,228,.46) 48%, rgba(181,211,229,.46))',
+                border:
+                  '1px solid rgba(255,255,255,.78)',
+                boxShadow:
+                  'inset 8px 10px 20px rgba(255,255,255,.6), 0 15px 28px rgba(79,103,122,.08)',
+              }}
+            />
+
+            <div
+              style={{
+                position: 'absolute',
+                width: '47px',
+                height: '47px',
+                left: '63px',
+                top: '61px',
+                borderRadius: '50%',
+                background:
+                  'radial-gradient(circle at 32% 27%, #ffffff 0 14%, #edf5f8 24%, #d7e7ee 54%, #e4cdd2 100%)',
+                border:
+                  '1px solid rgba(255,255,255,.95)',
+                boxShadow:
+                  '0 10px 24px rgba(72,101,122,.16), inset 5px 5px 8px rgba(255,255,255,.88)',
+                zIndex: 4,
+              }}
+            />
+
+            <div
+              style={{
+                position: 'absolute',
+                width: '38px',
+                height: '8px',
+                left: '38px',
+                top: '39px',
+                borderRadius: '999px',
+                transform:
+                  'rotate(-36deg)',
+                background:
+                  'rgba(255,255,255,.8)',
+                filter: 'blur(1.5px)',
+                zIndex: 5,
+              }}
+            />
+
+            <div
+              style={{
+                position: 'absolute',
+                right: '9px',
+                top: '22px',
+                width: '22px',
+                height: '22px',
+              }}
+            >
+              <span
+                style={{
+                  position: 'absolute',
+                  left: '10px',
+                  top: 0,
+                  width: '2px',
+                  height: '22px',
+                  borderRadius: '999px',
+                  background:
+                    'rgba(255,255,255,.9)',
+                }}
+              />
+
+              <span
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: '10px',
+                  width: '22px',
+                  height: '2px',
+                  borderRadius: '999px',
+                  background:
+                    'rgba(255,255,255,.9)',
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                position: 'absolute',
+                left: '13px',
+                bottom: '23px',
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                background:
+                  'rgba(255,255,255,.88)',
+                boxShadow:
+                  '0 0 18px rgba(255,255,255,.95)',
               }}
             />
           </div>
