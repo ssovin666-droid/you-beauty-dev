@@ -40,12 +40,12 @@ def prepare_database():
             "telegram_user_id"
         )
 
-        if not telegram_column:
-            return
-
-        if not isinstance(
-            telegram_column["type"],
-            BigInteger,
+        if (
+            telegram_column
+            and not isinstance(
+                telegram_column["type"],
+                BigInteger,
+            )
         ):
             connection.execute(
                 text(
@@ -54,6 +54,16 @@ def prepare_database():
                     ALTER COLUMN telegram_user_id
                     TYPE BIGINT
                     USING telegram_user_id::bigint
+                    """
+                )
+            )
+
+        if "traffic_source" not in columns:
+            connection.execute(
+                text(
+                    """
+                    ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS traffic_source VARCHAR(500)
                     """
                 )
             )
