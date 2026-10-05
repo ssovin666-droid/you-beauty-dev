@@ -4,10 +4,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import BigInteger, inspect, text
 
-from app.api.routes import router
 from app.api.match_admin import (
     router as match_admin_router,
 )
+from app.api.routes import router
 from app.db.session import engine
 from app.models import Base
 
@@ -22,10 +22,11 @@ def prepare_database():
             connection
         )
 
-        if (
-            "users"
-            not in inspector.get_table_names()
-        ):
+        table_names = (
+            inspector.get_table_names()
+        )
+
+        if "users" not in table_names:
             return
 
         columns = {
@@ -63,7 +64,19 @@ def prepare_database():
                 text(
                     """
                     ALTER TABLE users
-                    ADD COLUMN IF NOT EXISTS traffic_source VARCHAR(500)
+                    ADD COLUMN IF NOT EXISTS
+                    traffic_source VARCHAR(500)
+                    """
+                )
+            )
+
+        if "bot_started_at" not in columns:
+            connection.execute(
+                text(
+                    """
+                    ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS
+                    bot_started_at TIMESTAMP WITH TIME ZONE
                     """
                 )
             )
