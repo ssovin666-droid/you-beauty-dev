@@ -308,7 +308,137 @@ export function Home({ go }: HomeProps) {
         >
           <div className="orb orb-a" />
           <div className="orb orb-b" />
-          <div className="hero-bottle" />
+
+          <div
+            style={{
+              position: 'absolute',
+              width: '160px',
+              height: '160px',
+              right: '8%',
+              top: '50%',
+              transform:
+                'translateY(-50%) rotate(-8deg)',
+              filter:
+                'drop-shadow(0 20px 28px rgba(86,111,130,0.14))',
+            }}
+          >
+            <span
+              style={{
+                position: 'absolute',
+                width: '74px',
+                height: '74px',
+                left: '8px',
+                top: '8px',
+                borderRadius:
+                  '60% 42% 58% 44%',
+                transform:
+                  'rotate(-8deg)',
+                background:
+                  'linear-gradient(145deg, rgba(255,255,255,.95), rgba(198,220,235,.58) 52%, rgba(239,211,217,.48))',
+                border:
+                  '1px solid rgba(255,255,255,.9)',
+                boxShadow:
+                  'inset 8px 10px 18px rgba(255,255,255,.72), 0 9px 20px rgba(83,108,126,.10)',
+              }}
+            />
+
+            <span
+              style={{
+                position: 'absolute',
+                width: '74px',
+                height: '74px',
+                right: '8px',
+                top: '8px',
+                borderRadius:
+                  '60% 42% 58% 44%',
+                transform:
+                  'rotate(82deg)',
+                background:
+                  'linear-gradient(145deg, rgba(255,255,255,.95), rgba(205,226,236,.55) 50%, rgba(238,206,218,.5))',
+                border:
+                  '1px solid rgba(255,255,255,.9)',
+                boxShadow:
+                  'inset 8px 10px 18px rgba(255,255,255,.72), 0 9px 20px rgba(83,108,126,.10)',
+              }}
+            />
+
+            <span
+              style={{
+                position: 'absolute',
+                width: '74px',
+                height: '74px',
+                left: '8px',
+                bottom: '8px',
+                borderRadius:
+                  '60% 42% 58% 44%',
+                transform:
+                  'rotate(-98deg)',
+                background:
+                  'linear-gradient(145deg, rgba(255,255,255,.95), rgba(213,228,237,.52) 48%, rgba(242,214,218,.52))',
+                border:
+                  '1px solid rgba(255,255,255,.9)',
+                boxShadow:
+                  'inset 8px 10px 18px rgba(255,255,255,.72), 0 9px 20px rgba(83,108,126,.10)',
+              }}
+            />
+
+            <span
+              style={{
+                position: 'absolute',
+                width: '74px',
+                height: '74px',
+                right: '8px',
+                bottom: '8px',
+                borderRadius:
+                  '60% 42% 58% 44%',
+                transform:
+                  'rotate(172deg)',
+                background:
+                  'linear-gradient(145deg, rgba(255,255,255,.95), rgba(198,219,234,.55) 50%, rgba(240,208,216,.48))',
+                border:
+                  '1px solid rgba(255,255,255,.9)',
+                boxShadow:
+                  'inset 8px 10px 18px rgba(255,255,255,.72), 0 9px 20px rgba(83,108,126,.10)',
+              }}
+            />
+
+            <span
+              style={{
+                position: 'absolute',
+                width: '42px',
+                height: '42px',
+                left: '50%',
+                top: '50%',
+                transform:
+                  'translate(-50%, -50%)',
+                borderRadius: '50%',
+                background:
+                  'radial-gradient(circle at 32% 26%, #ffffff 0 18%, #dceaf1 44%, #e9cfd3 100%)',
+                border:
+                  '1px solid rgba(255,255,255,.92)',
+                boxShadow:
+                  '0 7px 20px rgba(73,102,125,.16), inset 4px 5px 8px rgba(255,255,255,.82)',
+                zIndex: 2,
+              }}
+            />
+
+            <span
+              style={{
+                position: 'absolute',
+                width: '37px',
+                height: '12px',
+                left: '28px',
+                top: '32px',
+                borderRadius: '999px',
+                background:
+                  'rgba(255,255,255,.72)',
+                filter: 'blur(2px)',
+                transform:
+                  'rotate(-28deg)',
+                zIndex: 3,
+              }}
+            />
+          </div>
         </div>
       </section>
 
