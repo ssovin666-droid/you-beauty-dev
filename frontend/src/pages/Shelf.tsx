@@ -217,6 +217,9 @@ export function Shelf() {
   const [items, setItems] =
     useState<TrackedItem[]>([])
 
+  const [deletingItemId, setDeletingItemId] =
+    useState<number | null>(null)
+
   useEffect(() => {
     loadShelf()
   }, [])
@@ -445,6 +448,75 @@ export function Shelf() {
     }
   }
 
+  async function deleteShelfItem(
+    trackedItemId: number
+  ) {
+    const confirmed = window.confirm(
+      'Удалить этот товар с Полки?'
+    )
+
+    if (!confirmed) return
+
+    setDeletingItemId(trackedItemId)
+    setAccountError(null)
+    setSuccess(null)
+
+    try {
+      const authHeaders =
+        getTelegramAuthHeaders()
+
+      if (
+        !authHeaders[
+          'X-Telegram-Init-Data'
+        ]
+      ) {
+        throw new Error(
+          'Открой You Beauty через Telegram, чтобы удалить товар.'
+        )
+      }
+
+      const response = await fetch(
+        `${API_BASE}/tracked/${trackedItemId}`,
+        {
+          method: 'DELETE',
+          headers: authHeaders,
+        }
+      )
+
+      const data = await response
+        .json()
+        .catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(
+          data?.detail ||
+            `Ошибка удаления: ${response.status}`
+        )
+      }
+
+      setItems(currentItems =>
+        currentItems.filter(
+          item =>
+            item.id !== trackedItemId
+        )
+      )
+
+      setSuccess(
+        'Товар удалён с Полки'
+      )
+    } catch (err) {
+      console.error(err)
+
+      setAccountError(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось удалить товар'
+      )
+    } finally {
+      setDeletingItemId(null)
+    }
+  }
+
   const discountCount = items.filter(
     item => item.offer?.has_discount
   ).length
@@ -543,31 +615,85 @@ export function Shelf() {
       {loading && imagePreview && (
         <div
           style={{
-            marginTop: '20px',
-            borderRadius: '24px',
-            overflow: 'hidden',
+            marginTop: '22px',
             background: '#ffffff',
+            borderRadius: '26px',
+            overflow: 'hidden',
+            boxShadow:
+              '0 18px 50px rgba(31, 43, 50, 0.07)',
           }}
         >
-          <img
-            src={imagePreview}
-            alt="Добавляемый товар"
+          <div
             style={{
-              display: 'block',
-              width: '100%',
-              height: '300px',
-              objectFit: 'cover',
-              opacity: 0.82,
+              position: 'relative',
             }}
-          />
+          >
+            <img
+              src={imagePreview}
+              alt="Добавляемый товар"
+              style={{
+                width: '100%',
+                height: '330px',
+                objectFit: 'cover',
+                display: 'block',
+                opacity: 0.84,
+              }}
+            />
+
+            <div
+              className="mono"
+              style={{
+                position: 'absolute',
+                top: '16px',
+                left: '16px',
+                padding: '8px 12px',
+                borderRadius: '100px',
+                background:
+                  'rgba(255,255,255,0.9)',
+                backdropFilter:
+                  'blur(10px)',
+                fontSize: '11px',
+                letterSpacing:
+                  '0.08em',
+              }}
+            >
+              AI SEARCH
+            </div>
+          </div>
 
           <div
             style={{
-              padding: '18px 20px 22px',
+              padding:
+                '20px 22px 24px',
             }}
           >
-            <div className="mono subhead">
-              AI распознаёт средство
+            <div
+              className="mono subhead"
+              style={{
+                marginBottom: '7px',
+              }}
+            >
+              ИЩУ ТОЧНЫЙ ТОВАР
+            </div>
+
+            <div
+              style={{
+                fontSize: '19px',
+                fontWeight: 600,
+              }}
+            >
+              Анализирую фото…
+            </div>
+
+            <div
+              className="mono"
+              style={{
+                marginTop: '7px',
+                opacity: 0.5,
+                fontSize: '12px',
+              }}
+            >
+              бренд · название · вариант · объём
             </div>
           </div>
         </div>
@@ -578,8 +704,8 @@ export function Shelf() {
           style={{
             marginTop: '20px',
             padding: '18px 20px',
-            borderRadius: '24px',
-            background: '#f6e9e9',
+            borderRadius: '22px',
+            background: '#f4e7e7',
           }}
         >
           <strong>
@@ -589,8 +715,9 @@ export function Shelf() {
           <div
             className="mono"
             style={{
-              marginTop: '8px',
+              marginTop: '7px',
               opacity: 0.65,
+              fontSize: '12px',
             }}
           >
             {error}
@@ -599,18 +726,23 @@ export function Shelf() {
       )}
 
       {result && (
-        <div className="product-list">
-          <div
-            style={{
-              marginTop: '20px',
-              borderRadius: '24px',
-              overflow: 'hidden',
-              background: '#ffffff',
-              boxShadow:
-                '0 16px 42px rgba(30, 45, 55, 0.07)',
-            }}
-          >
-            {imagePreview && (
+        <div
+          style={{
+            marginTop: '22px',
+            background: '#ffffff',
+            borderRadius: '28px',
+            overflow: 'hidden',
+            boxShadow:
+              '0 20px 60px rgba(31, 43, 50, 0.08)',
+          }}
+        >
+          {imagePreview && (
+            <div
+              style={{
+                position: 'relative',
+                background: '#eef3f5',
+              }}
+            >
               <img
                 src={imagePreview}
                 alt={
@@ -618,94 +750,196 @@ export function Shelf() {
                   'Распознанный товар'
                 }
                 style={{
-                  display: 'block',
                   width: '100%',
-                  height: '300px',
+                  height: '350px',
                   objectFit: 'cover',
+                  display: 'block',
                 }}
               />
-            )}
-
-            <div
-              style={{
-                padding: '22px',
-              }}
-            >
-              <div className="mono subhead">
-                {result.category ||
-                  'Косметическое средство'}
-              </div>
-
-              <h2
-                style={{
-                  margin: '10px 0 5px',
-                }}
-              >
-                {result.brand ||
-                  'Бренд не определён'}
-              </h2>
-
-              <div
-                style={{
-                  fontSize: '16px',
-                  lineHeight: 1.45,
-                }}
-              >
-                {result.product_name ||
-                  'Название не определено'}
-              </div>
-
-              {(result.variant ||
-                result.size) && (
-                <div
-                  className="mono"
-                  style={{
-                    marginTop: '12px',
-                    opacity: 0.65,
-                  }}
-                >
-                  {[
-                    result.variant,
-                    result.size,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </div>
-              )}
 
               <div
                 className="mono"
                 style={{
-                  marginTop: '18px',
-                  fontSize: '12px',
-                  opacity: 0.55,
+                  position:
+                    'absolute',
+                  top: '16px',
+                  left: '16px',
+                  padding:
+                    '8px 12px',
+                  borderRadius:
+                    '100px',
+                  background:
+                    'rgba(255,255,255,0.92)',
+                  backdropFilter:
+                    'blur(12px)',
+                  fontSize: '11px',
+                  letterSpacing:
+                    '0.08em',
                 }}
               >
-                AI уверен на{' '}
-                {Math.round(
-                  (result.confidence || 0) *
-                    100
-                )}
-                %
+                FOUND
               </div>
 
-              <button
-                className="add-button"
-                onClick={saveToShelf}
-                disabled={
-                  saving ||
-                  !result.product_name
-                }
+              <div
                 style={{
-                  width: '100%',
-                  marginTop: '22px',
+                  position:
+                    'absolute',
+                  right: '16px',
+                  top: '16px',
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '50%',
+                  display: 'grid',
+                  placeItems: 'center',
+                  background:
+                    'rgba(255,255,255,0.92)',
+                  fontSize: '20px',
                 }}
               >
-                {saving
-                  ? 'Сохраняю...'
-                  : '＋ Добавить на Полку'}
-              </button>
+                ♡
+              </div>
             </div>
+          )}
+
+          <div
+            style={{
+              padding: '24px',
+            }}
+          >
+            <div
+              className="mono"
+              style={{
+                opacity: 0.5,
+                fontSize: '11px',
+                textTransform:
+                  'uppercase',
+                letterSpacing:
+                  '0.1em',
+              }}
+            >
+              {result.category ||
+                'Beauty product'}
+            </div>
+
+            <h2
+              style={{
+                margin:
+                  '11px 0 4px',
+                fontSize: '26px',
+                lineHeight: 1.08,
+              }}
+            >
+              {result.brand ||
+                'Бренд не определён'}
+            </h2>
+
+            <div
+              style={{
+                fontSize: '17px',
+                lineHeight: 1.45,
+              }}
+            >
+              {result.product_name ||
+                'Название не определено'}
+            </div>
+
+            {(result.variant ||
+              result.size) && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                  marginTop: '17px',
+                }}
+              >
+                {result.variant && (
+                  <span
+                    className="mono"
+                    style={{
+                      background:
+                        '#eff3f6',
+                      padding:
+                        '8px 11px',
+                      borderRadius:
+                        '100px',
+                      fontSize:
+                        '12px',
+                    }}
+                  >
+                    {result.variant}
+                  </span>
+                )}
+
+                {result.size && (
+                  <span
+                    className="mono"
+                    style={{
+                      background:
+                        '#eff3f6',
+                      padding:
+                        '8px 11px',
+                      borderRadius:
+                        '100px',
+                      fontSize:
+                        '12px',
+                    }}
+                  >
+                    {result.size}
+                  </span>
+                )}
+              </div>
+            )}
+
+            <div
+              style={{
+                marginTop: '22px',
+                paddingTop: '18px',
+                borderTop:
+                  '1px solid rgba(20,30,35,0.07)',
+                display: 'flex',
+                justifyContent:
+                  'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div
+                className="mono"
+                style={{
+                  fontSize: '11px',
+                  opacity: 0.5,
+                  letterSpacing:
+                    '0.07em',
+                }}
+              >
+                AI MATCH
+              </div>
+
+              <strong>
+                {Math.round(
+                  (result.confidence ||
+                    0) * 100
+                )}
+                %
+              </strong>
+            </div>
+
+            <button
+              className="add-button"
+              onClick={saveToShelf}
+              disabled={
+                saving ||
+                !result.product_name
+              }
+              style={{
+                marginTop: '22px',
+                width: '100%',
+              }}
+            >
+              {saving
+                ? 'Сохраняю...'
+                : '♡ Добавить на Полку'}
+            </button>
           </div>
         </div>
       )}
@@ -735,10 +969,13 @@ export function Shelf() {
               <article
                 key={item.id}
                 style={{
-                  padding: '20px 22px',
+                  padding:
+                    '20px 22px',
                   marginBottom: '12px',
-                  borderRadius: '24px',
-                  background: '#ffffff',
+                  borderRadius:
+                    '24px',
+                  background:
+                    '#ffffff',
                   boxShadow:
                     '0 12px 36px rgba(31,43,50,0.06)',
                 }}
@@ -752,13 +989,15 @@ export function Shelf() {
                       'uppercase',
                   }}
                 >
-                  {item.product.category ||
+                  {item.product
+                    .category ||
                     'Beauty product'}
                 </div>
 
                 <h3
                   style={{
-                    margin: '8px 0 4px',
+                    margin:
+                      '8px 0 4px',
                   }}
                 >
                   {item.product.brand
@@ -770,19 +1009,25 @@ export function Shelf() {
                   {item.product.name}
                 </div>
 
-                {(item.product.variant ||
-                  item.product.size) && (
+                {(item.product
+                  .variant ||
+                  item.product
+                    .size) && (
                   <div
                     className="mono"
                     style={{
-                      marginTop: '9px',
+                      marginTop:
+                        '9px',
                       opacity: 0.55,
-                      fontSize: '12px',
+                      fontSize:
+                        '12px',
                     }}
                   >
                     {[
-                      item.product.variant,
-                      item.product.size,
+                      item.product
+                        .variant,
+                      item.product
+                        .size,
                     ]
                       .filter(Boolean)
                       .join(' · ')}
@@ -792,6 +1037,90 @@ export function Shelf() {
                 <PriceBlock
                   offer={item.offer}
                 />
+
+                {item.offer &&
+                  (item.offer.affiliate_url ||
+                    item.offer.product_url) && (
+                    <a
+                      href={`${API_BASE}/out/${item.offer.id}?source=shelf`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent:
+                          'space-between',
+                        width: '100%',
+                        boxSizing:
+                          'border-box',
+                        marginTop: '14px',
+                        padding:
+                          '14px 16px',
+                        borderRadius:
+                          '16px',
+                        background:
+                          '#f1f5f6',
+                        color: '#1f2b30',
+                        textDecoration:
+                          'none',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <span>
+                        Открыть в Золотом Яблоке
+                      </span>
+
+                      <span>
+                        →
+                      </span>
+                    </a>
+                  )}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    deleteShelfItem(
+                      item.id
+                    )
+                  }
+                  disabled={
+                    deletingItemId ===
+                    item.id
+                  }
+                  style={{
+                    width: '100%',
+                    marginTop: '10px',
+                    padding:
+                      '12px 16px',
+                    borderRadius:
+                      '16px',
+                    border:
+                      '1px solid rgba(155,76,86,0.14)',
+                    background:
+                      '#fffafa',
+                    color:
+                      '#9b4c56',
+                    fontSize:
+                      '12px',
+                    fontWeight: 600,
+                    cursor:
+                      deletingItemId ===
+                      item.id
+                        ? 'default'
+                        : 'pointer',
+                    opacity:
+                      deletingItemId ===
+                      item.id
+                        ? 0.55
+                        : 1,
+                  }}
+                >
+                  {deletingItemId ===
+                  item.id
+                    ? 'Удаляю…'
+                    : 'Удалить с Полки'}
+                </button>
               </article>
             ))}
           </div>
@@ -804,28 +1133,56 @@ export function Shelf() {
         !accountError && (
           <div
             style={{
-              padding: '58px 24px',
+              marginTop: '28px',
+              padding:
+                '52px 25px',
               textAlign: 'center',
+              borderRadius: '28px',
+              background:
+                'linear-gradient(180deg, #f4f7f8 0%, #faf9f7 100%)',
             }}
           >
-            <h3>
-              На полке пока ничего нет
+            <div
+              style={{
+                width: '66px',
+                height: '66px',
+                display: 'grid',
+                placeItems: 'center',
+                margin:
+                  '0 auto 18px',
+                borderRadius:
+                  '22px',
+                background:
+                  '#ffffff',
+                fontSize: '27px',
+              }}
+            >
+              ♡
+            </div>
+
+            <h3
+              style={{
+                margin: 0,
+                fontSize: '20px',
+              }}
+            >
+              Твоя Полка пока пуста
             </h3>
 
             <div
               className="mono"
               style={{
-                marginTop: '9px',
-                opacity: 0.55,
-                lineHeight: 1.6,
-                fontSize: '13px',
+                marginTop: '10px',
+                opacity: 0.52,
+                fontSize: '12px',
+                lineHeight: 1.65,
               }}
             >
-              Добавь средство, которым пользуешься.
+              Добавляй средства,
+              которыми уже пользуешься.
               <br />
-              Теперь оно сохранится
-              <br />
-              в твоём Telegram-аккаунте.
+              Мы сохраним их на Полке
+              и будем следить за ценой.
             </div>
           </div>
         )}
