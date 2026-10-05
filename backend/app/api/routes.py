@@ -16,6 +16,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.amplitude import track_event
 from app.db.session import get_db
 from app.models import (
     Brand,
@@ -935,17 +936,6 @@ def outbound(
             detail="Offer not found",
         )
 
-    click = OutboundClick(
-        user_id=user_id,
-        offer_id=offer.id,
-        source=source,
-        notification_id=
-            notification_id,
-    )
-
-    db.add(click)
-    db.commit()
-
     target = (
         offer.affiliate_url
         or offer.product_url
@@ -956,6 +946,48 @@ def outbound(
             status_code=404,
             detail="Offer URL not found",
         )
+
+    click_user = None
+
+    if user_id is not None:
+        click_user = db.get(
+            User,
+            user_id,
+        )
+
+    click = OutboundClick(
+        user_id=(
+            click_user.id
+            if click_user
+            else None
+        ),
+        offer_id=offer.id,
+        source=source,
+        notification_id=notification_id,
+    )
+
+    db.add(click)
+    db.commit()
+
+    if (
+        source == "discount"
+        and click_user is not None
+    ):
+        try:
+            track_event(
+                click_user.telegram_user_id,
+                "Opened Partner Site After Discount",
+                {
+                    "offer_id": offer.id,
+                    "store_id": offer.store_id,
+                },
+            )
+
+        except Exception as exc:
+            print(
+                "AMPLITUDE_PARTNER_CLICK_ERROR:",
+                repr(exc),
+            )
 
     return RedirectResponse(
         target,
