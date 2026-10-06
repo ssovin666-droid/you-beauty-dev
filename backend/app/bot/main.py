@@ -1,4 +1,6 @@
 import asyncio
+import os
+import time
 from datetime import datetime, timezone
 
 from aiogram import Bot, Dispatcher, Router
@@ -19,10 +21,43 @@ from app.core.amplitude import (
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.models.catalog import User
+from app.services.discount_monitor import (
+    check_discount_notifications,
+)
+from app.services.golden_apple_feed import (
+    sync_golden_apple_feed,
+)
 
 
 settings = get_settings()
 router = Router()
+
+
+# Как часто проверять новые сохранённые товары.
+# Здесь полный каталог не скачивается.
+DISCOUNT_STATE_CHECK_SECONDS = max(
+    60,
+    int(
+        os.getenv(
+            "DISCOUNT_STATE_CHECK_SECONDS",
+            "300",
+        )
+    ),
+)
+
+
+# Как часто полностью обновлять
+# каталог Golden Apple.
+# По умолчанию — раз в 3 часа.
+GOLDEN_APPLE_SYNC_SECONDS = max(
+    900,
+    int(
+        os.getenv(
+            "GOLDEN_APPLE_SYNC_SECONDS",
+            "10800",
+        )
+    ),
+)
 
 
 def save_bot_start(
@@ -60,8 +95,6 @@ def save_bot_start(
             db.flush()
 
         else:
-            # Эти данные можно безопасно актуализировать.
-            # Они не относятся к рекламной атрибуции.
             user.username = username
             user.first_name = first_name
 
@@ -74,9 +107,8 @@ def save_bot_start(
                 datetime.now(timezone.utc)
             )
 
-            # traffic_source — строго first-touch.
-            # Если первый /start был без параметра,
-            # оставляем NULL навсегда.
+            # traffic_source —
+            # строго first-touch.
             if (
                 traffic_source
                 and user.traffic_source is None
@@ -114,10 +146,6 @@ async def start(
     if telegram_user is None:
         return
 
-    # Raw Telegram /start parameter.
-    # Например:
-    # /start instagram_october
-    # command.args == "instagram_october"
     traffic_source = (
         command.args
         if command.args
@@ -140,8 +168,6 @@ async def start(
         )
 
     except Exception as exc:
-        # Ошибка аналитики/БД не должна ломать
-        # сам Telegram UX.
         print(
             "BOT_START_DB_ERROR:",
             repr(exc),
@@ -160,7 +186,6 @@ async def start(
         ]
     )
 
-    # Сначала успешно отвечаем пользователю.
     await message.answer(
         (
             "Добавляй косметику по фото, "
@@ -169,8 +194,6 @@ async def start(
         reply_markup=kb,
     )
 
-    # Только после успешной обработки /start
-    # отправляем продуктовую аналитику.
     try:
         if (
             first_start
@@ -188,12 +211,162 @@ async def start(
         )
 
     except Exception as exc:
-        # Amplitude никогда не должен
-        # ломать работу бота.
         print(
             "AMPLITUDE_STARTED_BOT_ERROR:",
             repr(exc),
         )
+
+
+async def run_discount_check(
+    bot: Bot,
+    sync_catalog: bool = False,
+):
+    """
+    Один проход проверки скидок.
+
+    Если sync_catalog=True:
+    сначала скачиваем свежий каталог
+    Golden Apple.
+
+    Затем проверяем товары пользователей
+    и при необходимости отправляем
+    личные Telegram-сообщения.
+    """
+
+    if sync_catalog:
+        print(
+            "GOLDEN_APPLE_SYNC | START"
+        )
+
+        try:
+            await asyncio.to_thread(
+                sync_golden_apple_feed
+            )
+
+            print(
+                "GOLDEN_APPLE_SYNC | DONE"
+            )
+
+        except Exception as exc:
+            # Ошибка обновления каталога
+            # не должна останавливать бота.
+            print(
+                "GOLDEN_APPLE_SYNC | FAILED:",
+                repr(exc),
+            )
+
+    db = SessionLocal()
+
+    try:
+        result = (
+            await check_discount_notifications(
+                bot,
+                db,
+            )
+        )
+
+        print(
+            "DISCOUNT_CHECK |",
+            result,
+        )
+
+    except Exception as exc:
+        db.rollback()
+
+        print(
+            "DISCOUNT_CHECK_ERROR:",
+            repr(exc),
+        )
+
+    finally:
+        db.close()
+
+
+async def discount_worker(
+    bot: Bot,
+):
+    """
+    Постоянный фоновый worker.
+
+    1. Каждые несколько минут
+       фиксирует состояние новых товаров.
+
+    2. Раз в несколько часов
+       обновляет каталог Golden Apple.
+
+    3. После обновления каталога
+       проверяет новые скидки.
+
+    Worker последовательный:
+    две проверки одновременно
+    не запускаются.
+    """
+
+    # Даём боту спокойно запуститься.
+    await asyncio.sleep(15)
+
+    print(
+        "DISCOUNT_WORKER | STARTED | "
+        f"state_check="
+        f"{DISCOUNT_STATE_CHECK_SECONDS}s | "
+        f"catalog_sync="
+        f"{GOLDEN_APPLE_SYNC_SECONDS}s"
+    )
+
+    # При первом старте НЕ обновляем
+    # весь каталог.
+    # Сначала просто фиксируем
+    # текущие цены как базовое состояние.
+    await run_discount_check(
+        bot,
+        sync_catalog=False,
+    )
+
+    next_catalog_sync = (
+        time.monotonic()
+        + GOLDEN_APPLE_SYNC_SECONDS
+    )
+
+    while True:
+        try:
+            await asyncio.sleep(
+                DISCOUNT_STATE_CHECK_SECONDS
+            )
+
+            now = time.monotonic()
+
+            should_sync_catalog = (
+                now >= next_catalog_sync
+            )
+
+            await run_discount_check(
+                bot,
+                sync_catalog=(
+                    should_sync_catalog
+                ),
+            )
+
+            if should_sync_catalog:
+                next_catalog_sync = (
+                    time.monotonic()
+                    + GOLDEN_APPLE_SYNC_SECONDS
+                )
+
+        except asyncio.CancelledError:
+            print(
+                "DISCOUNT_WORKER | STOPPED"
+            )
+            raise
+
+        except Exception as exc:
+            # Даже неожиданная ошибка
+            # не должна убивать worker.
+            print(
+                "DISCOUNT_WORKER_ERROR:",
+                repr(exc),
+            )
+
+            await asyncio.sleep(60)
 
 
 async def main():
@@ -206,8 +379,6 @@ async def main():
         settings.bot_token
     )
 
-    # Удаляем старый webhook,
-    # чтобы бот работал через polling.
     await bot.delete_webhook(
         drop_pending_updates=True
     )
@@ -215,17 +386,31 @@ async def main():
     dp = Dispatcher()
     dp.include_router(router)
 
+    discount_task = asyncio.create_task(
+        discount_worker(bot)
+    )
+
     try:
         await dp.start_polling(bot)
 
     finally:
+        discount_task.cancel()
+
+        try:
+            await discount_task
+        except asyncio.CancelledError:
+            pass
+
         try:
             flush_amplitude()
+
         except Exception as exc:
             print(
                 "AMPLITUDE_FLUSH_ERROR:",
                 repr(exc),
             )
+
+        await bot.session.close()
 
 
 if __name__ == "__main__":
