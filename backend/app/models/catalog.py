@@ -171,6 +171,45 @@ class TrackedItem(Base):
         default=datetime.utcnow,
     )
 
+    # -------------------------
+    # PRICE TRACKING MEMORY
+    # -------------------------
+
+    last_seen_price: Mapped[float | None] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+    )
+
+    last_seen_old_price: Mapped[float | None] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+    )
+
+    last_seen_has_discount: Mapped[bool | None] = mapped_column(
+        Boolean,
+        nullable=True,
+    )
+
+    last_price_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    last_notified_price: Mapped[float | None] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+    )
+
+    last_notified_discount_percent: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    last_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     product: Mapped[Product] = relationship()
 
 
