@@ -3,6 +3,7 @@ import os
 import re
 import unicodedata
 from dataclasses import asdict
+from datetime import datetime, timezone
 
 from fastapi import (
     APIRouter,
@@ -280,6 +281,53 @@ def ensure_product_offer(
         )
 
 
+def initialize_tracked_price_baseline(
+    db: Session,
+    tracked_item: TrackedItem,
+    product_id: int,
+):
+    # Если исходная цена уже была зафиксирована,
+    # повторно её не перезаписываем.
+    if (
+        tracked_item.last_price_checked_at
+        is not None
+    ):
+        return
+
+    offer = get_offer_payload(
+        db,
+        product_id,
+    )
+
+    # Если магазин пока не найден или цены ещё нет,
+    # baseline позже поставит discount worker.
+    if (
+        not offer
+        or offer.get("current_price")
+        is None
+    ):
+        return
+
+    tracked_item.last_seen_price = (
+        offer["current_price"]
+    )
+
+    tracked_item.last_seen_old_price = (
+        offer.get("old_price")
+    )
+
+    tracked_item.last_seen_has_discount = (
+        bool(offer.get("has_discount"))
+    )
+
+    tracked_item.last_price_checked_at = (
+        datetime.now(timezone.utc)
+    )
+
+    db.commit()
+    db.refresh(tracked_item)
+
+
 def serialize_tracked_item(
     db: Session,
     row: TrackedItem,
@@ -472,6 +520,12 @@ def add_tracked(
             product,
         )
 
+        initialize_tracked_price_baseline(
+            db,
+            existing,
+            product.id,
+        )
+
         return {
             "ok": True,
             "tracked_item_id":
@@ -503,6 +557,12 @@ def add_tracked(
     ensure_product_offer(
         db,
         product,
+    )
+
+    initialize_tracked_price_baseline(
+        db,
+        row,
+        product.id,
     )
 
     return {
@@ -670,6 +730,12 @@ def add_recognized_product(
         db,
         product,
         force=True,
+    )
+
+    initialize_tracked_price_baseline(
+        db,
+        tracked_item,
+        product.id,
     )
 
     return {
