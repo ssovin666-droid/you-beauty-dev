@@ -29,6 +29,9 @@ API_BASE_URL = os.getenv(
 ).rstrip("/")
 
 
+TEMPLATE_COUNT = 3
+
+
 def _to_float(value):
     if value is None:
         return None
@@ -38,7 +41,6 @@ def _to_float(value):
 
 def _format_price(
     value: float | None,
-    currency: str | None,
 ) -> str:
     if value is None:
         return "—"
@@ -54,13 +56,7 @@ def _format_price(
             .replace(",", " ")
         )
 
-    if currency == "RUB":
-        return f"{formatted} ₽"
-
-    if currency:
-        return f"{formatted} {currency}"
-
-    return formatted
+    return f"{formatted} ₽"
 
 
 def _discount_percent(
@@ -93,7 +89,6 @@ def _get_offer(
 ) -> tuple[
     Offer | None,
     Store | None,
-    str | None,
 ]:
     row = db.execute(
         select(
@@ -120,40 +115,87 @@ def _get_offer(
         return (
             None,
             None,
-            None,
         )
 
     offer, store = row
 
-    currency = db.scalar(
-        select(
-            StoreCatalogItem.currency
-        )
-        .where(
-            StoreCatalogItem.product_id
-            == product_id,
-            StoreCatalogItem.store_id
-            == store.id,
-        )
-        .order_by(
-            StoreCatalogItem.synced_at.desc()
-        )
-        .limit(1)
-    )
-
     return (
         offer,
         store,
-        currency,
     )
+
+
+def _get_list_text(
+    tracked_item: TrackedItem,
+) -> str:
+    list_type = getattr(
+        tracked_item.list_type,
+        "value",
+        tracked_item.list_type,
+    )
+
+    if list_type == "wishlist":
+        return "Wishlist"
+
+    return "Полку"
+
+
+def _choose_template_index(
+    tracked_item: TrackedItem,
+    now: datetime,
+) -> int:
+    """
+    Выбирает один из трёх шаблонов.
+
+    Для одного и того же товара
+    один шаблон два раза подряд
+    не используется.
+    """
+
+    current_key = int(
+        now.timestamp() // 60
+    )
+
+    template_index = (
+        tracked_item.id
+        + current_key
+    ) % TEMPLATE_COUNT
+
+    if (
+        tracked_item.last_notified_at
+        is not None
+    ):
+        previous_key = int(
+            tracked_item
+            .last_notified_at
+            .timestamp()
+            // 60
+        )
+
+        previous_template_index = (
+            tracked_item.id
+            + previous_key
+        ) % TEMPLATE_COUNT
+
+        if (
+            template_index
+            == previous_template_index
+        ):
+            template_index = (
+                template_index + 1
+            ) % TEMPLATE_COUNT
+
+    return template_index
 
 
 def _build_message(
     product: Product,
+    tracked_item: TrackedItem,
     current_price: float,
     old_price: float | None,
     discount_percent: int | None,
-) -> str:
+    template_index: int,
+) -> tuple[str, str]:
     brand = (
         product.brand.name
         if product.brand
@@ -169,84 +211,244 @@ def _build_message(
         if value
     ]
 
-    title = " — ".join(
-        title_parts
+    title = html.escape(
+        " — ".join(
+            title_parts
+        )
     )
 
-    safe_title = html.escape(
-        title
+    details = " · ".join(
+        [
+            value
+            for value in [
+                product.variant,
+                product.size,
+            ]
+            if value
+        ]
+    )
+
+    safe_details = (
+        html.escape(details)
+        if details
+        else None
     )
 
     current_text = _format_price(
-        current_price,
-        "RUB",
+        current_price
     )
 
     old_text = (
         _format_price(
-            old_price,
-            "RUB",
+            old_price
         )
         if old_price is not None
         else None
     )
 
-    lines = [
-        "✨ <b>Цена снизилась</b>",
-        "",
-        f"<b>{safe_title}</b>",
-    ]
+    list_text = _get_list_text(
+        tracked_item
+    )
 
-    if (
-        product.variant
-        or product.size
-    ):
-        details = " · ".join(
-            [
-                value
-                for value in [
-                    product.variant,
-                    product.size,
+    saving = None
+
+    if old_price is not None:
+        saving_value = (
+            old_price
+            - current_price
+        )
+
+        if saving_value > 0:
+            saving = _format_price(
+                saving_value
+            )
+
+    #
+    # ШАБЛОН 1
+    #
+    if template_index == 0:
+        lines = [
+            "💗 <b>Кажется, пора брать</b>",
+            "",
+            f"<b>{title}</b>",
+        ]
+
+        if safe_details:
+            lines.append(
+                safe_details
+            )
+
+        lines.append("")
+
+        if old_text:
+            lines.extend(
+                [
+                    f"Было <s>{old_text}</s>",
+                    (
+                        f"Сейчас "
+                        f"<b>{current_text}</b>"
+                    ),
                 ]
-                if value
+            )
+
+        else:
+            lines.append(
+                f"Сейчас "
+                f"<b>{current_text}</b>"
+            )
+
+        if discount_percent is not None:
+            lines.extend(
+                [
+                    "",
+                    (
+                        f"<b>−"
+                        f"{discount_percent}%</b>"
+                    ),
+                ]
+            )
+
+        lines.extend(
+            [
+                "",
+                (
+                    f"Ты добавляла этот товар "
+                    f"в {list_text} — "
+                    f"мы заметили, что цена "
+                    f"снизилась."
+                ),
             ]
         )
 
+        return (
+            "\n".join(lines),
+            "Забрать со скидкой →",
+        )
+
+    #
+    # ШАБЛОН 2
+    #
+    if template_index == 1:
+        lines = [
+            "✨ <b>Цена стала приятнее</b>",
+            "",
+            f"<b>{title}</b>",
+        ]
+
+        if safe_details:
+            lines.append(
+                safe_details
+            )
+
+        lines.append("")
+
+        if (
+            old_text
+            and discount_percent
+            is not None
+        ):
+            lines.append(
+                (
+                    f"<s>{old_text}</s> → "
+                    f"<b>{current_text}</b>"
+                )
+            )
+
+            lines.append(
+                (
+                    f"Скидка "
+                    f"<b>−{discount_percent}%</b>"
+                )
+            )
+
+        else:
+            lines.append(
+                (
+                    f"Новая цена — "
+                    f"<b>{current_text}</b>"
+                )
+            )
+
+        if saving:
+            lines.append(
+                (
+                    f"Экономия — "
+                    f"<b>{saving}</b>"
+                )
+            )
+
+        lines.extend(
+            [
+                "",
+                (
+                    f"Этот товар у тебя "
+                    f"в {list_text}. "
+                    f"You Beauty поймал "
+                    f"снижение цены 💕"
+                ),
+            ]
+        )
+
+        return (
+            "\n".join(lines),
+            "Посмотреть скидку →",
+        )
+
+    #
+    # ШАБЛОН 3
+    #
+    lines = [
+        "👀 <b>Поймали скидку</b>",
+        "",
+        f"<b>{title}</b>",
+    ]
+
+    if safe_details:
         lines.append(
-            html.escape(details)
+            safe_details
         )
 
     lines.append("")
 
-    if (
-        old_text
-        and discount_percent
-        is not None
-    ):
+    if old_text:
         lines.append(
-            f"<s>{old_text}</s> → "
-            f"<b>{current_text}</b>"
-        )
-
-        lines.append(
-            f"Скидка −{discount_percent}%"
+            (
+                f"Цена опустилась с "
+                f"<s>{old_text}</s> "
+                f"до <b>{current_text}</b>"
+            )
         )
 
     else:
         lines.append(
-            f"Новая цена: "
-            f"<b>{current_text}</b>"
+            (
+                f"Сейчас цена — "
+                f"<b>{current_text}</b>"
+            )
+        )
+
+    if discount_percent is not None:
+        lines.append(
+            (
+                f"Сейчас скидка "
+                f"<b>−{discount_percent}%</b>"
+            )
         )
 
     lines.extend(
         [
             "",
-            "You Beauty следит за ценой "
-            "и сообщает, когда становится выгоднее 💗",
+            (
+                "Если ждала хороший момент — "
+                "он может быть сейчас ✨"
+            ),
         ]
     )
 
-    return "\n".join(lines)
+    return (
+        "\n".join(lines),
+        "Смотреть в ЗЯ →",
+    )
 
 
 async def check_discount_notifications(
@@ -293,8 +495,10 @@ async def check_discount_notifications(
                 skipped += 1
                 continue
 
-            # Берём свежую цену из каталога
-            # Golden Apple и обновляем Offer.
+            #
+            # Обновляем Offer свежими
+            # данными из каталога ЗЯ.
+            #
             match_result = (
                 link_product_to_best_match(
                     db,
@@ -314,7 +518,6 @@ async def check_discount_notifications(
             (
                 offer,
                 _store,
-                currency,
             ) = _get_offer(
                 db,
                 product.id,
@@ -355,10 +558,11 @@ async def check_discount_notifications(
                 timezone.utc
             )
 
+            #
             # Первый проход:
-            # только запоминаем состояние.
-            # Старые скидки массово
-            # пользователям не рассылаем.
+            # только запоминаем текущую цену.
+            # Старые скидки не рассылаем.
+            #
             if (
                 tracked_item
                 .last_price_checked_at
@@ -396,11 +600,18 @@ async def check_discount_notifications(
                 is True
             )
 
+            #
+            # Скидка появилась.
+            #
             discount_just_started = (
                 has_discount
                 and not previous_discount
             )
 
+            #
+            # Скидка уже была,
+            # но цена стала ещё ниже.
+            #
             price_dropped_further = (
                 has_discount
                 and previous_price
@@ -419,6 +630,13 @@ async def check_discount_notifications(
             )
 
             if should_notify:
+                template_index = (
+                    _choose_template_index(
+                        tracked_item,
+                        now,
+                    )
+                )
+
                 notification_id = (
                     f"discount-"
                     f"{tracked_item.id}-"
@@ -434,24 +652,12 @@ async def check_discount_notifications(
                     f"{notification_id}"
                 )
 
-                keyboard = (
-                    InlineKeyboardMarkup(
-                        inline_keyboard=[
-                            [
-                                InlineKeyboardButton(
-                                    text=(
-                                        "Посмотреть "
-                                        "в Золотом Яблоке →"
-                                    ),
-                                    url=click_url,
-                                )
-                            ]
-                        ]
-                    )
-                )
-
-                message = _build_message(
+                (
+                    message,
+                    button_text,
+                ) = _build_message(
                     product=product,
+                    tracked_item=tracked_item,
                     current_price=(
                         current_price
                     ),
@@ -459,6 +665,22 @@ async def check_discount_notifications(
                     discount_percent=(
                         discount_percent
                     ),
+                    template_index=(
+                        template_index
+                    ),
+                )
+
+                keyboard = (
+                    InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [
+                                InlineKeyboardButton(
+                                    text=button_text,
+                                    url=click_url,
+                                )
+                            ]
+                        ]
+                    )
                 )
 
                 try:
@@ -486,9 +708,6 @@ async def check_discount_notifications(
                         f"{exc}"
                     )
 
-                    # Не обновляем состояние:
-                    # при следующем запуске
-                    # попробуем отправить ещё раз.
                     db.rollback()
                     continue
 
@@ -515,9 +734,16 @@ async def check_discount_notifications(
                     f"{user.telegram_user_id} "
                     f"price={current_price} "
                     f"discount="
-                    f"{discount_percent}"
+                    f"{discount_percent} "
+                    f"template="
+                    f"{template_index + 1}"
                 )
 
+            #
+            # Запоминаем состояние,
+            # чтобы на следующей проверке
+            # понимать, изменилась ли цена.
+            #
             tracked_item.last_seen_price = (
                 current_price
             )
