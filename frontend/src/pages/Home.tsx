@@ -79,7 +79,7 @@ export function Home({ go }: HomeProps) {
         setShelf([])
 
         setError(
-          'Открой You Beauty через Telegram, чтобы загрузить сохранения.'
+          'Открой Cosmi через Telegram, чтобы загрузить сохранения.'
         )
 
         return
@@ -266,7 +266,7 @@ export function Home({ go }: HomeProps) {
           </div>
 
           <h1>
-            You Beauty
+            Cosmi
           </h1>
         </div>
       </header>
