@@ -63,6 +63,10 @@ def prepare_database():
                     )
                 )
 
+            # Старое поле first-touch.
+            # Оставляем для совместимости
+            # с существующей аналитикой
+            # и Amplitude.
             if (
                 "traffic_source"
                 not in user_columns
@@ -77,6 +81,37 @@ def prepare_database():
                     )
                 )
 
+            # Первый источник пользователя.
+            if (
+                "first_source"
+                not in user_columns
+            ):
+                connection.execute(
+                    text(
+                        """
+                        ALTER TABLE users
+                        ADD COLUMN IF NOT EXISTS
+                        first_source VARCHAR(500)
+                        """
+                    )
+                )
+
+            # Последний источник запуска.
+            if (
+                "last_source"
+                not in user_columns
+            ):
+                connection.execute(
+                    text(
+                        """
+                        ALTER TABLE users
+                        ADD COLUMN IF NOT EXISTS
+                        last_source VARCHAR(500)
+                        """
+                    )
+                )
+
+            # Первый запуск бота.
             if (
                 "bot_started_at"
                 not in user_columns
@@ -91,6 +126,80 @@ def prepare_database():
                         """
                     )
                 )
+
+            # Последний запуск /start.
+            if (
+                "last_started_at"
+                not in user_columns
+            ):
+                connection.execute(
+                    text(
+                        """
+                        ALTER TABLE users
+                        ADD COLUMN IF NOT EXISTS
+                        last_started_at
+                        TIMESTAMP WITH TIME ZONE
+                        """
+                    )
+                )
+
+            # -------------------------
+            # BACKFILL EXISTING USERS
+            # -------------------------
+            #
+            # Старые данные не теряем:
+            #
+            # traffic_source →
+            # first_source + last_source
+            #
+            # bot_started_at →
+            # last_started_at
+            #
+            # COALESCE не перезаписывает
+            # уже заполненные новые поля.
+            # -------------------------
+
+            connection.execute(
+                text(
+                    """
+                    UPDATE users
+                    SET first_source =
+                        COALESCE(
+                            first_source,
+                            traffic_source
+                        )
+                    WHERE first_source IS NULL
+                    """
+                )
+            )
+
+            connection.execute(
+                text(
+                    """
+                    UPDATE users
+                    SET last_source =
+                        COALESCE(
+                            last_source,
+                            traffic_source
+                        )
+                    WHERE last_source IS NULL
+                    """
+                )
+            )
+
+            connection.execute(
+                text(
+                    """
+                    UPDATE users
+                    SET last_started_at =
+                        COALESCE(
+                            last_started_at,
+                            bot_started_at
+                        )
+                    WHERE last_started_at IS NULL
+                    """
+                )
+            )
 
         # -------------------------
         # TRACKED ITEMS
