@@ -65,18 +65,52 @@ def save_bot_start(
     username: str | None,
     first_name: str | None,
     traffic_source: str | None,
-) -> tuple[bool, str | None]:
+) -> tuple[
+    bool,
+    str | None,
+]:
     """
     Сохраняет запуск бота.
 
+    Логика источников:
+
+    traffic_source:
+    старое совместимое поле.
+    Хранит first-touch источник.
+
+    first_source:
+    первый источник пользователя.
+    Никогда не перезаписывается.
+
+    last_source:
+    источник последнего /start.
+    Обновляется каждый раз.
+
+    bot_started_at:
+    первый запуск бота.
+
+    last_started_at:
+    последний запуск /start.
+
     Возвращает:
-    - был ли это первый зафиксированный /start;
-    - сохранённый first-touch traffic_source.
+    - был ли это первый запуск;
+    - сохранённый first-touch источник.
     """
 
     db = SessionLocal()
 
     try:
+        now = datetime.now(
+            timezone.utc
+        )
+
+        source = (
+            traffic_source.strip()[:500]
+            if traffic_source
+            and traffic_source.strip()
+            else "direct"
+        )
+
         user = db.scalar(
             select(User).where(
                 User.telegram_user_id
@@ -86,7 +120,9 @@ def save_bot_start(
 
         if user is None:
             user = User(
-                telegram_user_id=telegram_user_id,
+                telegram_user_id=(
+                    telegram_user_id
+                ),
                 username=username,
                 first_name=first_name,
             )
@@ -102,30 +138,69 @@ def save_bot_start(
             user.bot_started_at is None
         )
 
+        # -------------------------
+        # FIRST START
+        # -------------------------
+
         if is_first_start:
-            user.bot_started_at = (
-                datetime.now(timezone.utc)
+            user.bot_started_at = now
+
+        # -------------------------
+        # FIRST-TOUCH SOURCE
+        # -------------------------
+        #
+        # first_source и traffic_source
+        # заполняем только если они
+        # ещё пустые.
+        #
+        # Это специально НЕ зависит
+        # от bot_started_at:
+        # старый пользователь мог
+        # существовать в базе,
+        # но не иметь источника.
+        # -------------------------
+
+        if user.first_source is None:
+            user.first_source = source
+
+        if user.traffic_source is None:
+            user.traffic_source = (
+                user.first_source
+                or source
             )
 
-            # traffic_source —
-            # строго first-touch.
-            if (
-                traffic_source
-                and user.traffic_source is None
-            ):
-                user.traffic_source = (
-                    traffic_source[:500]
-                )
+        # -------------------------
+        # LAST-TOUCH
+        # -------------------------
+        #
+        # Обновляется на каждом /start.
+        # -------------------------
 
-        saved_traffic_source = (
-            user.traffic_source
+        user.last_source = source
+        user.last_started_at = now
+
+        saved_first_source = (
+            user.first_source
+            or user.traffic_source
         )
 
         db.commit()
 
+        print(
+            "BOT_START | "
+            f"telegram_user_id="
+            f"{telegram_user_id} "
+            f"first_start="
+            f"{is_first_start} "
+            f"first_source="
+            f"{saved_first_source} "
+            f"last_source="
+            f"{source}"
+        )
+
         return (
             is_first_start,
-            saved_traffic_source,
+            saved_first_source,
         )
 
     except Exception:
@@ -149,7 +224,7 @@ async def start(
     traffic_source = (
         command.args
         if command.args
-        else None
+        else "direct"
     )
 
     first_start = False
@@ -195,10 +270,16 @@ async def start(
     )
 
     try:
-        if (
-            first_start
-            and saved_traffic_source
-        ):
+        # set_user_property_once
+        # сам отвечает за то,
+        # чтобы first-touch property
+        # не перезаписывалась.
+        #
+        # Вызываем не только при
+        # first_start, потому что
+        # пользователь мог существовать
+        # раньше без traffic_source.
+        if saved_traffic_source:
             set_user_property_once(
                 telegram_user.id,
                 "traffic_source",
