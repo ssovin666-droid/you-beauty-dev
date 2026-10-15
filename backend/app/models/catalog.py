@@ -46,12 +46,36 @@ class User(Base):
         String(255)
     )
 
+    # Старое поле оставляем для совместимости
+    # с Amplitude и существующей аналитикой.
+    # Оно хранит first-touch источник.
     traffic_source: Mapped[str | None] = mapped_column(
         String(500)
     )
 
+    # Первый источник пользователя.
+    # После первого заполнения не меняется.
+    first_source: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
+    # Последний источник запуска бота.
+    # Может обновляться при новых /start.
+    last_source: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
+    # Первый запуск бота.
     bot_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
+    )
+
+    # Последний запуск /start.
+    last_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
