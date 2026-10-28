@@ -39,6 +39,7 @@ from app.schemas.catalog import (
     TrackRecognizedProductIn,
 )
 from app.services.golden_apple_feed import sync_golden_apple_feed
+from app.services.partner_links import with_telegram_sub1
 from app.services.product_matcher import (
     calculate_match_score,
     get_candidates,
@@ -334,6 +335,7 @@ def serialize_tracked_item(
 ):
     return {
         "id": row.id,
+        "user_id": row.user_id,
         "list_type": (
             row.list_type.value
             if isinstance(
@@ -1019,6 +1021,12 @@ def outbound(
         click_user = db.get(
             User,
             user_id,
+        )
+
+    if click_user is not None:
+        target = with_telegram_sub1(
+            target,
+            click_user.telegram_user_id,
         )
 
     click = OutboundClick(

@@ -54,6 +54,7 @@ type Offer = {
 
 type TrackedItem = {
   id: number
+  user_id: number
   list_type: string
   notifications_enabled: boolean
   product: SavedProduct
@@ -1117,7 +1118,7 @@ export function Shelf() {
                   (item.offer.affiliate_url ||
                     item.offer.product_url) && (
                     <a
-                      href={`${API_BASE}/out/${item.offer.id}?source=shelf`}
+                      href={`${API_BASE}/out/${item.offer.id}?source=shelf&user_id=${item.user_id}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{
