@@ -383,7 +383,7 @@ def _build_message(
                 (
                     f"Этот товар у тебя "
                     f"в {list_text}. "
-                    f"Cosmi поймал "
+                    f"cosmi поймал "
                     f"снижение цены 💕"
                 ),
             ]

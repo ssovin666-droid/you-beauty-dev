@@ -252,7 +252,7 @@ async def start(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Открыть Cosmi",
+                    text="Открыть cosmi",
                     web_app=WebAppInfo(
                         url=settings.mini_app_url
                     ),

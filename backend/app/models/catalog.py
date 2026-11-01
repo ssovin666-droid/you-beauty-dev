@@ -25,6 +25,22 @@ class ListType(str, enum.Enum):
     shelf = "shelf"
 
 
+class ShadeGroup(str, enum.Enum):
+    """Эстетика товара для 3D-персонажа.
+
+    bold — яркие, goth — тёмные, nude — нюд,
+    pastel — пастель, glow — уход/сияние,
+    glitter — блёстки. NULL — не определено.
+    """
+
+    bold = "bold"
+    goth = "goth"
+    nude = "nude"
+    pastel = "pastel"
+    glow = "glow"
+    glitter = "glitter"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -144,6 +160,19 @@ class Product(Base):
         String(700),
         unique=True,
         index=True,
+    )
+
+    # Хранится как VARCHAR (не native PG enum),
+    # чтобы миграция была одним ALTER TABLE.
+    shade_group: Mapped[ShadeGroup | None] = mapped_column(
+        Enum(
+            ShadeGroup,
+            native_enum=False,
+            length=20,
+            create_constraint=False,
+            validate_strings=True,
+        ),
+        nullable=True,
     )
 
     brand: Mapped[Brand | None] = relationship()

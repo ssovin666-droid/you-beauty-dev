@@ -16,6 +16,17 @@ class RecognitionResult:
     size: str | None = None
     category: str | None = None
     confidence: float = 0.0
+    shade_group: str | None = None
+
+
+SHADE_GROUPS = (
+    "bold",
+    "goth",
+    "nude",
+    "pastel",
+    "glow",
+    "glitter",
+)
 
 
 def _get_output_text(data: dict) -> str:
@@ -60,6 +71,10 @@ async def recognize_product_image(
             "category": {
                 "type": ["string", "null"],
             },
+            "shade_group": {
+                "type": ["string", "null"],
+                "enum": [*SHADE_GROUPS, None],
+            },
             "confidence": {
                 "type": "number",
                 "minimum": 0,
@@ -72,6 +87,7 @@ async def recognize_product_image(
             "variant",
             "size",
             "category",
+            "shade_group",
             "confidence",
         ],
         "additionalProperties": False,
@@ -91,7 +107,15 @@ async def recognize_product_image(
                             "Return the brand, exact product name, variant or shade if visible, "
                             "size or volume if visible, and product category. "
                             "Do not invent information that is not visible or reasonably identifiable. "
-                            "If uncertain, use null for that field and lower confidence."
+                            "If uncertain, use null for that field and lower confidence. "
+                            "Also classify the product aesthetic as shade_group: "
+                            "bold — bright saturated colors (red lipstick, neon, bright liner); "
+                            "goth — dark or vampy shades (black liner, plum, burgundy, dark nails); "
+                            "nude — natural skin-like shades (foundation, concealer, beige, brown, peach); "
+                            "pastel — soft light pinks, lilac, baby blue, cute girly shades; "
+                            "glow — skincare and glow products (serum, cream, toner, SPF, highlighter without glitter); "
+                            "glitter — glitter, shimmer, sparkle, metallic or holographic finish. "
+                            "Use null if the aesthetic is not clear."
                         ),
                     },
                     {
@@ -147,4 +171,9 @@ async def recognize_product_image(
         size=parsed.get("size"),
         category=parsed.get("category"),
         confidence=float(parsed.get("confidence", 0)),
+        shade_group=(
+            parsed.get("shade_group")
+            if parsed.get("shade_group") in SHADE_GROUPS
+            else None
+        ),
     )

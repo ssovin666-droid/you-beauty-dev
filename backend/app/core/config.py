@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     mini_app_url: str = "http://localhost:5173"
     openai_api_key: str = ""
     amplitude_api_key: str = ""
+    analytics_enabled: bool = False
+    # Публичный https-адрес API (без /api) для ссылок
+    # на карточки сторис. Пусто — берём из запроса.
+    public_api_url: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

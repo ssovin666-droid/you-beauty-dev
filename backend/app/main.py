@@ -7,9 +7,16 @@ from sqlalchemy import BigInteger, inspect, text
 from app.api.match_admin import (
     router as match_admin_router,
 )
+from app.api.character_admin import (
+    router as character_admin_router,
+)
+from app.api.character_routes import (
+    router as character_router,
+)
 from app.api.routes import router
-from app.db.session import engine
+from app.db.session import SessionLocal, engine
 from app.models import Base
+from app.services.character import seed_items
 
 
 def prepare_database():
@@ -202,6 +209,62 @@ def prepare_database():
             )
 
         # -------------------------
+        # PRODUCTS
+        # shade_group для персонажа
+        # -------------------------
+
+        if "products" in table_names:
+            product_columns = {
+                column["name"]
+                for column
+                in inspector.get_columns(
+                    "products"
+                )
+            }
+
+            if (
+                "shade_group"
+                not in product_columns
+            ):
+                connection.execute(
+                    text(
+                        """
+                        ALTER TABLE products
+                        ADD COLUMN IF NOT EXISTS
+                        shade_group VARCHAR(20)
+                        """
+                    )
+                )
+
+        # -------------------------
+        # USER CHARACTERS
+        # seed уникальной формы звезды
+        # -------------------------
+
+        if "user_characters" in table_names:
+            character_columns = {
+                column["name"]
+                for column
+                in inspector.get_columns(
+                    "user_characters"
+                )
+            }
+
+            if (
+                "shape_seed"
+                not in character_columns
+            ):
+                connection.execute(
+                    text(
+                        """
+                        ALTER TABLE user_characters
+                        ADD COLUMN IF NOT EXISTS
+                        shape_seed INTEGER
+                        """
+                    )
+                )
+
+        # -------------------------
         # TRACKED ITEMS
         # Price tracking memory
         # -------------------------
@@ -322,6 +385,13 @@ async def lifespan(
     app: FastAPI,
 ):
     prepare_database()
+
+    db = SessionLocal()
+    try:
+        seed_items(db)
+    finally:
+        db.close()
+
     yield
 
 
@@ -348,5 +418,15 @@ app.include_router(
 
 app.include_router(
     match_admin_router,
+    prefix="/api/admin",
+)
+
+app.include_router(
+    character_router,
+    prefix="/api",
+)
+
+app.include_router(
+    character_admin_router,
     prefix="/api/admin",
 )

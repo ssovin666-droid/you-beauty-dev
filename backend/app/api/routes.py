@@ -26,6 +26,7 @@ from app.models import (
     Offer,
     OutboundClick,
     Product,
+    ShadeGroup,
     Store,
     StoreCatalogItem,
     TrackedItem,
@@ -635,6 +636,17 @@ def add_recognized_product(
                 brand_name,
             )
 
+    shade_group = None
+
+    if payload.shade_group:
+        try:
+            shade_group = ShadeGroup(
+                payload.shade_group
+            )
+
+        except ValueError:
+            shade_group = None
+
     canonical_key = make_canonical_key(
         brand_name,
         product_name,
@@ -678,10 +690,19 @@ def add_recognized_product(
             ),
             canonical_key=
                 canonical_key,
+            shade_group=shade_group,
         )
 
         db.add(product)
         db.flush()
+
+    elif (
+        product.shade_group is None
+        and shade_group is not None
+    ):
+        # Ручное значение из админки
+        # не перезаписываем.
+        product.shade_group = shade_group
 
     existing = db.scalar(
         select(TrackedItem).where(

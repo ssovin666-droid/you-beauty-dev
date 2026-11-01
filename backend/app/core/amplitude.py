@@ -13,7 +13,7 @@ _client: Amplitude | None = None
 def get_amplitude_client() -> Amplitude | None:
     global _client
 
-    if not settings.amplitude_api_key:
+    if not settings.analytics_enabled or settings.app_env != "production" or not settings.amplitude_api_key:
         return None
 
     if _client is None:

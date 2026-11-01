@@ -17,6 +17,7 @@ type RecognitionResult = {
   variant: string | null
   size: string | null
   category: string | null
+  shade_group?: string | null
   confidence: number
 }
 
@@ -405,6 +406,8 @@ export function Wishlist() {
             size: result.size,
             category:
               result.category,
+            shade_group:
+              result.shade_group ?? null,
           }),
         }
       )
