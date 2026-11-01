@@ -36,23 +36,38 @@ export function useTelegramTheme(): ThemeMode {
 }
 
 // Вкладка видна и мини-апп не свёрнут.
+// Стартуем всегда «активными»: Telegram (особенно iOS) может открыть
+// предзагруженный WebView со visibilityState = 'hidden' и не прислать
+// visibilitychange — тогда персонаж замирал до перезагрузки.
+// Паузу ставим только по явному сигналу, снимаем по любому признаку жизни.
 export function useAppActive(): boolean {
-  const [active, setActive] = useState(() => document.visibilityState !== 'hidden')
+  const [active, setActive] = useState(true)
 
   useEffect(() => {
     const webApp = getWebApp()
-    const onVisibility = () => setActive(document.visibilityState !== 'hidden')
-    const onActivated = () => setActive(true)
-    const onDeactivated = () => setActive(false)
+    const wake = () => setActive(true)
+    const sleep = () => setActive(false)
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') sleep()
+      else wake()
+    }
 
     document.addEventListener('visibilitychange', onVisibility)
-    webApp?.onEvent?.('activated', onActivated)
-    webApp?.onEvent?.('deactivated', onDeactivated)
+    window.addEventListener('focus', wake)
+    window.addEventListener('pageshow', wake)
+    window.addEventListener('pointerdown', wake, { passive: true })
+    window.addEventListener('pagehide', sleep)
+    webApp?.onEvent?.('activated', wake)
+    webApp?.onEvent?.('deactivated', sleep)
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibility)
-      webApp?.offEvent?.('activated', onActivated)
-      webApp?.offEvent?.('deactivated', onDeactivated)
+      window.removeEventListener('focus', wake)
+      window.removeEventListener('pageshow', wake)
+      window.removeEventListener('pointerdown', wake)
+      window.removeEventListener('pagehide', sleep)
+      webApp?.offEvent?.('activated', wake)
+      webApp?.offEvent?.('deactivated', sleep)
     }
   }, [])
 

@@ -56,6 +56,46 @@ cp .env.example .env
 npm run dev
 ```
 
+## Геймификация: персонаж Cosmi Star
+
+3D-звёздочка на главной, тип и цвет которой зависят от оттенков товаров на Полке.
+Визуальный референс — `frontend/design-reference/character/`.
+
+**Данные (backend)**
+
+- `Product.shade_group`: `bold | goth | nude | pastel | glow | glitter | null`. Новые товары получают его из `/recognize` (модель возвращает поле `shade_group`). Существующие товары остаются `null`, их правят через админку.
+- `UserCharacter`, `Item`, `UserItem`, `RewardEvent` (+ `ShareCard` для PNG сторис) — `app/models/character.py`. Каталог предметов сидится при старте (`ITEM_CATALOG` в `app/services/character.py`).
+- Форма звезды уникальна для пользователя: при открытии (10 товаров на Полке) сервер один раз выдаёт случайный `UserCharacter.shape_seed`, дальше он не меняется. Клиент строит из него форму детерминированно (`frontend/src/lib/character/shape.ts`: число лучей 5–8, длины, наклоны). Не меняйте генератор — у всех поменяются формы.
+- Тип: самый частый `shade_group` на Полке, акцент — второй. Если доля лидера ≤ 30% («не больше 3 из 10»), тип — `chameleon`. Товары без `shade_group` не учитываются, ничьи решаются фиксированным порядком `bold → goth → nude → pastel → glow → glitter`.
+- Награды выдаются только на сервере. Повторная выдача невозможна: `RewardEvent` уникален по `(user_id, reward_key)`.
+  - `unlock` — 10 товаров на Полке;
+  - `quest:first_item` — 5 товаров, добавленных в Wishlist после открытия персонажа → «Заколка» (если она уже есть — первый неполученный предмет);
+  - `purchase:<order_id>` — подтверждённая покупка: редкость по весам 70/22/7/1 → случайный неполученный предмет этой редкости, иначе эволюция (`UserCharacter.evolution += 1`). Клики `/out` наград не дают.
+
+**API**
+
+- `GET /api/character` — статус (`locked | ready_to_unbox | active`), прогресс, тип/акцент, распределение полки, инвентарь, надетые предметы, текущее задание, непоказанные награды.
+- `POST /api/character/unbox`, `POST /api/character/equip` `{item_code, equip}`, `POST /api/character/rewards/ack` `{reward_ids}`, `POST /api/character/shared`.
+- `POST /api/character/share-card` (multipart PNG ≤ 4 МБ) → `{url}`; картинка отдаётся публично по `GET /api/share-cards/{token}.png`.
+- Админка (`X-Admin-Key`):
+  - `GET /api/admin/products/shade-groups?missing_only=true` — товары без оттенка;
+  - `PATCH /api/admin/products/{id}/shade-group` `{"shade_group": "goth"}`;
+  - `POST /api/admin/character/purchase-reward` `{"order_id": "...", "user_id": 1}` или `{"telegram_user_id": ...}` — ручное подтверждение покупки. Будущий postback партнёрки должен вызывать `grant_purchase_reward(db, user_id, order_id)`.
+
+**Переменные окружения**
+
+- backend `PUBLIC_API_URL` — публичный https-адрес API без `/api` (для ссылок на карточки сторис). Если не задан, адрес берётся из запроса с учётом `X-Forwarded-Proto`.
+- frontend `VITE_BOT_USERNAME` — username бота для карточки и ссылок «поделиться» (по умолчанию `cosmi_bbot`).
+
+**Frontend**
+
+- Шрифты подключены из npm (`@fontsource`): весь текст — Manrope, логотип «cosmi» (всегда с маленькой буквы) — Unbounded SemiBold 600, 20px, трекинг −0.03em (`.logo`).
+
+- `src/lib/character/scene.ts` — three.js-сцена без React (порт референса), `components/character/CosmiStar.tsx` — React-обёртка, грузит three.js отдельным чанком.
+- Рендер останавливается, когда персонаж вне экрана, вкладка скрыта или мини-апп свёрнут. `devicePixelRatio` ограничен значением 2. На устройствах без WebGL, со слабым железом, при потере контекста или медленных кадрах показывается статичная SVG-картинка.
+- Тема — по `Telegram.WebApp.colorScheme`, safe area — `env(safe-area-inset-*)` и `safeAreaInset` из Telegram.
+- События Amplitude: `character_progress_viewed`, `character_unboxed`, `character_shared`, `character_tapped`, `item_received`, `quest_completed`, `inventory_opened`.
+
 ## Следующий milestone
 
 1. Telegram Mini App authentication (`initData`) и создание пользователя в БД.

@@ -1033,15 +1033,18 @@ export class StarScene {
       this.colorsDirty = true
     }
 
+    this.refreshIdle()
   }
 
   setStage(hex: string) {
     this.tgt.bg.set(hex)
     if (this.firstLook) this.cur.bg.copy(this.tgt.bg)
+    this.refreshIdle()
   }
 
   setEvolution(level: number) {
     this.tgt.evo = Math.max(0, Math.min(MAX_SATELLITES, level))
+    this.refreshIdle()
   }
 
   setShelf(items: { group: ShadeKey; shade: string }[], density = 1) {
@@ -1066,15 +1069,19 @@ export class StarScene {
         ;(m.material as THREE.MeshPhysicalMaterial).color.set(items[k % items.length].shade)
       })
     }
+    this.refreshIdle()
   }
 
-  setEquipped(equipped: Partial<Record<Slot, string | null>>) {
+  // instant — без анимации появления (первичная настройка сцены).
+  setEquipped(equipped: Partial<Record<Slot, string | null>>, instant = false) {
     const on = new Set(Object.values(equipped).filter(Boolean) as string[])
     Object.entries(this.acc).forEach(([id, a]) => {
       const next = on.has(id) ? 1 : 0
-      if (next && a.t === 0) this.squash = Math.max(this.squash, 0.5)
+      if (next && a.t === 0 && !instant) this.squash = Math.max(this.squash, 0.5)
       a.t = next
+      if (instant) a.s = next
     })
+    this.refreshIdle()
   }
 
   // Реакция на тап: подпрыгнуть, моргнуть, разбросать частицы.
@@ -1225,9 +1232,26 @@ export class StarScene {
   private tick = (now: number) => {
     if (!this.running) return
     this.raf = requestAnimationFrame(this.tick)
+    this.frame(now, false)
+  }
 
-    const rawDt = (now - this.lastFrame) / 1000
-    this.lastFrame = now
+  // Когда цикл на паузе (персонаж скрыт/вкладка неактивна), после
+  // изменения данных рисуем один «установившийся» кадр, чтобы на экране
+  // никогда не оставался дефолтный вид.
+  private refreshIdle() {
+    if (this.running || this.disposed) return
+    this.frame(performance.now(), true)
+  }
+
+  private frame(now: number, idle: boolean) {
+    if (idle) {
+      this.particles.forEach(p => { p.s = p.dying ? 0 : 1 })
+      Object.values(this.acc).forEach(a => { a.s = a.t })
+      this.satellites.forEach((m, i) => { m.userData.s = i < Math.round(this.tgt.evo) ? 1 : 0 })
+    }
+
+    const rawDt = idle ? 0 : (now - this.lastFrame) / 1000
+    if (!idle) this.lastFrame = now
     const dt = Math.min(Math.max(rawDt, 0), 0.05)
     this.t += dt
     const t = this.t
@@ -1243,7 +1267,7 @@ export class StarScene {
     }
 
     const { cur, tgt, bodyMat } = this
-    const k = 1 - Math.exp(-dt * 3.2)
+    const k = idle ? 1 : 1 - Math.exp(-dt * 3.2)
 
     // --- плавный переход внешности
     const before = cur.body.r + cur.body.g + cur.body.b + cur.accent.r + cur.accent.g + cur.accent.b + cur.rainbow

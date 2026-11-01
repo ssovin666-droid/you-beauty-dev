@@ -332,9 +332,12 @@
 }
 
 .cs-capsule {
+  /* Размер задаётся переменной, всё внутри — в долях от неё:
+     капсула рисуется в нужном размере, без transform: scale (иначе мыло). */
+  --cw: 120px;
   position: relative;
-  width: 120px;
-  height: 168px;
+  width: var(--cw);
+  height: calc(var(--cw) * 1.4);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -358,7 +361,7 @@
 
 .cs-capsule-top {
   top: 0;
-  border-radius: 60px 60px 8px 8px;
+  border-radius: calc(var(--cw) * .5) calc(var(--cw) * .5) calc(var(--cw) * .067) calc(var(--cw) * .067);
   border-bottom: 0;
   background: linear-gradient(160deg, rgba(255, 255, 255, .75), rgba(220, 210, 240, .35) 55%, rgba(255, 255, 255, .15));
   box-shadow: inset 8px 10px 20px rgba(255, 255, 255, .55);
@@ -367,7 +370,7 @@
 
 .cs-capsule-bottom {
   bottom: 0;
-  border-radius: 8px 8px 60px 60px;
+  border-radius: calc(var(--cw) * .067) calc(var(--cw) * .067) calc(var(--cw) * .5) calc(var(--cw) * .5);
   border-top: 0;
   background: linear-gradient(200deg, rgba(255, 255, 255, .55), rgba(230, 220, 245, .4));
   z-index: 1;
@@ -384,10 +387,10 @@
 
 .cs-capsule-shine {
   position: absolute;
-  left: 18px;
-  top: 14px;
-  width: 16px;
-  height: 46px;
+  left: 15%;
+  top: 8.3%;
+  width: 13.3%;
+  height: 54.8%;
   border-radius: 999px;
   background: rgba(255, 255, 255, .85);
   filter: blur(1px);
@@ -961,13 +964,17 @@
 .cs-unbox-capsule {
   position: relative;
   z-index: 2;
-  transform: scale(1.5);
   animation: cs-pop-in .45s cubic-bezier(.3, 1.6, .5, 1) both;
+}
+
+/* Крупная капсула в нативном размере (раньше была scale(1.5) → пиксели). */
+.cs-unbox-capsule .cs-capsule {
+  --cw: min(190px, 46vw);
 }
 
 @keyframes cs-pop-in {
   from { transform: scale(.4); opacity: 0; }
-  to { transform: scale(1.5); opacity: 1; }
+  to { transform: none; opacity: 1; }
 }
 
 .cs-unbox-shards {

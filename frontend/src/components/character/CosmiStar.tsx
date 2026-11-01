@@ -80,7 +80,12 @@ export const CosmiStar = forwardRef<CosmiStarHandle, Props>(function CosmiStar(
   const [fallback, setFallback] = useState(
     () => webglSupport() !== 'ok' || isDeviceMarkedSlow(),
   )
-  const [ready, setReady] = useState(false)
+  // Номер текущей сцены (0 — ещё нет). Счётчик, а не boolean:
+  // при пересоздании сцены false→true могло склеиться в один рендер,
+  // эффекты синхронизации не перезапускались, и новая сцена оставалась
+  // «пустой» (дефолтный вид) и на паузе.
+  const [sceneVersion, setSceneVersion] = useState(0)
+  const ready = sceneVersion > 0
   const [inView, setInView] = useState(true)
   const appActive = useAppActive()
 
@@ -88,6 +93,10 @@ export const CosmiStar = forwardRef<CosmiStarHandle, Props>(function CosmiStar(
     () => shelfParticles(distribution ?? {}),
     [distribution],
   )
+
+  // Актуальные пропсы для мгновенной настройки только что созданной сцены.
+  const latest = useRef({ archetype, accent, evolution, particles, equipped, theme })
+  latest.current = { archetype, accent, evolution, particles, equipped, theme }
 
   // --- создание сцены (three.js грузится отдельным чанком)
   useEffect(() => {
@@ -119,8 +128,15 @@ export const CosmiStar = forwardRef<CosmiStarHandle, Props>(function CosmiStar(
           },
           onContextLost: () => setFallback(true),
         })
+        // Сразу применяем внешний вид — не ждём эффектов.
+        const now = latest.current
+        scene.setStage(STAGE_COLORS[now.theme])
+        scene.setEvolution(now.evolution)
+        scene.setLook(now.archetype, now.accent, Boolean(now.equipped?.aura))
+        scene.setShelf(now.particles)
+        scene.setEquipped(now.equipped ?? {}, true)
         sceneRef.current = scene
-        setReady(true)
+        setSceneVersion(v => v + 1)
       })
       .catch(error => {
         console.error('Cosmi star: WebGL init failed', error)
@@ -131,7 +147,6 @@ export const CosmiStar = forwardRef<CosmiStarHandle, Props>(function CosmiStar(
       cancelled = true
       scene?.dispose()
       sceneRef.current = null
-      setReady(false)
     }
     // Сцена создаётся один раз; остальное синхронизируется эффектами ниже.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,29 +165,29 @@ export const CosmiStar = forwardRef<CosmiStarHandle, Props>(function CosmiStar(
   }, [])
 
   useEffect(() => {
-    sceneRef.current?.setActive(ready && inView && appActive && !paused)
-  }, [ready, inView, appActive, paused])
+    sceneRef.current?.setActive(inView && appActive && !paused)
+  }, [sceneVersion, inView, appActive, paused])
 
   // --- синхронизация данных со сценой
   useEffect(() => {
     sceneRef.current?.setStage(STAGE_COLORS[theme])
-  }, [ready, theme])
+  }, [sceneVersion, theme])
 
   useEffect(() => {
     sceneRef.current?.setEvolution(evolution)
-  }, [ready, evolution])
+  }, [sceneVersion, evolution])
 
   useEffect(() => {
     sceneRef.current?.setLook(archetype, accent, Boolean(equipped?.aura))
-  }, [ready, archetype, accent, equipped?.aura])
+  }, [sceneVersion, archetype, accent, equipped?.aura])
 
   useEffect(() => {
     sceneRef.current?.setShelf(particles)
-  }, [ready, particles])
+  }, [sceneVersion, particles])
 
   useEffect(() => {
     sceneRef.current?.setEquipped(equipped ?? {})
-  }, [ready, equipped])
+  }, [sceneVersion, equipped])
 
   useImperativeHandle(
     ref,

@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@500;600;700&display=swap" rel="stylesheet">
+<style>html,body{margin:0;height:100%;}body{font-family:Manrope,system-ui,sans-serif;-webkit-font-smoothing:antialiased;}a{color:inherit;}a:hover{opacity:.7;}button{font:inherit;}</style>
+</helmet>
+<div style="{{ themeVars }}">
+<div style="min-height:100vh; box-sizing:border-box; background:var(--bg,#f4f2ef); color:var(--ink,#17151a); display:flex; flex-direction:column; gap:14px; padding:14px 18px 18px; transition:background .4s, color .4s;">
+  <header style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+    <div style="font-family:Unbounded,sans-serif; font-weight:600; font-size:20px; letter-spacing:-0.03em;">cosmi</div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap; flex:1; justify-content:center;">
+      <sc-for list="{{ presets }}" as="p" hint-placeholder-count="7">
+        <button onClick="{{ p.onClick }}" style="{{ p.style }}">{{ p.label }}</button>
+      </sc-for>
+    </div>
+    <button onClick="{{ toggleTheme }}" style="height:36px; padding:0 14px; border-radius:999px; border:1px solid var(--line,rgba(0,0,0,.1)); background:transparent; color:var(--ink,#17151a); font-size:13px; font-weight:600; cursor:pointer;">{{ themeLabel }}</button>
+  </header>
+
+  <main style="flex:1; display:flex; flex-wrap:wrap; gap:14px;">
+    <section style="flex:100 1 460px; position:relative; height:calc(100vh - 96px); min-height:560px; border-radius:28px; overflow:hidden; background:var(--stage,#ebe6e1);">
+      <div ref="{{ stageRef }}" style="position:absolute; inset:0;"></div>
+      <sc-if value="{{ hint }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute; top:18px; left:0; right:0; display:flex; justify-content:center; pointer-events:none;">
+          <div style="font-size:12px; font-weight:600; color:var(--mute,#77727c); background:var(--glass,rgba(255,255,255,.6)); backdrop-filter:blur(12px); padding:7px 12px; border-radius:999px;">покрути меня или ткни</div>
+        </div>
+      </sc-if>
+      <div style="position:absolute; left:16px; right:16px; bottom:16px; display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; pointer-events:none;">
+        <div style="pointer-events:auto; background:var(--glass,rgba(255,255,255,.6)); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); border-radius:22px; padding:16px 20px; max-width:420px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:12px; font-weight:600; color:var(--mute,#77727c);">твой тип</span>
+            <sc-if value="{{ isRare }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:11px; font-weight:800; padding:3px 8px; border-radius:999px; color:#17151a; background:linear-gradient(90deg,#ffd36b,#ff8fc0,#9fd8ff);">редкий тип</span>
+            </sc-if>
+          </div>
+          <div style="font-family:Unbounded,sans-serif; font-weight:600; font-size:30px; letter-spacing:-0.03em; line-height:1.05;">{{ typeName }}</div>
+          <div style="font-size:15px; line-height:1.35; text-wrap:pretty;">{{ typeCaption }}</div>
+          <div style="display:flex; gap:14px; font-size:12px; color:var(--mute,#77727c); margin-top:2px;">
+            <span>тело: {{ bodyLabel }}</span>
+            <span>акцент: {{ accentLabel }}</span>
+          </div>
+        </div>
+        <button onClick="{{ openShare }}" style="pointer-events:auto; height:52px; padding:0 24px; border-radius:999px; border:none; background:var(--ink,#17151a); color:var(--bg,#f4f2ef); font-weight:700; font-size:15px; cursor:pointer;" style-hover="transform:translateY(-1px);">Поделиться</button>
+      </div>
+    </section>
+
+    <aside style="flex:1 1 330px; height:calc(100vh - 96px); min-height:560px; box-sizing:border-box; overflow:auto; background:var(--panel,#fbfaf8); border-radius:28px; padding:14px; display:flex; flex-direction:column; gap:14px;">
+      <div style="display:flex; background:var(--chip,#ece9e5); border-radius:16px; padding:4px; gap:4px;">
+        <button onClick="{{ showShelf }}" style="{{ tabShelfStyle }}">Моя полка</button>
+        <button onClick="{{ showInv }}" style="{{ tabInvStyle }}">Инвентарь</button>
+      </div>
+
+      <sc-if value="{{ isShelf }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex; flex-direction:column; gap:12px; padding:0 4px;">
+          <div style="font-size:13px; line-height:1.4; color:var(--mute,#77727c); text-wrap:pretty;">Цвет тела задаёт самый частый оттенок, акцент — второй. Если ни один не набрал больше трёх, выпадает Хамелеон.</div>
+          <div style="display:flex; height:10px; gap:3px;">
+            <sc-for list="{{ dist }}" as="d" hint-placeholder-count="3">
+              <div title="{{ d.label }}" style="{{ d.style }}"></div>
+            </sc-for>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px 10px;">
+            <sc-for list="{{ legend }}" as="l" hint-placeholder-count="6">
+              <div style="display:flex; align-items:center; gap:6px; font-size:12px;">
+                <span style="{{ l.dotStyle }}"></span>
+                <span style="flex:1; min-width:0;">{{ l.label }}</span>
+                <span style="color:var(--mute,#77727c); font-variant-numeric:tabular-nums;">{{ l.count }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; padding:0 4px;">
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="10">
+            <div style="display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--line,rgba(0,0,0,.07));">
+              <div style="{{ r.dotStyle }}"></div>
+              <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:1px;">
+                <span style="font-size:14px; font-weight:700;">{{ r.name }}</span>
+                <span style="font-size:12px; color:var(--mute,#77727c);">{{ r.catLabel }}</span>
+              </div>
+              <div style="display:flex; gap:5px;">
+                <sc-for list="{{ r.opts }}" as="o" hint-placeholder-count="6">
+                  <button title="{{ o.title }}" onClick="{{ o.onClick }}" style="{{ o.style }}"></button>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isInv }}" hint-placeholder-val="{{ false }}">
+        <div style="font-size:13px; line-height:1.4; color:var(--mute,#77727c); padding:0 4px;">Аксессуары выпадают за сканы и покупки в боте. Нажми, чтобы надеть или снять.</div>
+        <sc-for list="{{ inv }}" as="g" hint-placeholder-count="4">
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.09em; color:var(--mute,#77727c); padding:0 4px;">{{ g.label }}</div>
+            <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="1">
+              <button onClick="{{ it.onClick }}" style="{{ it.cardStyle }}">
+                <span style="{{ it.dotStyle }}"></span>
+                <span style="display:flex; flex-direction:column; gap:2px; flex:1; min-width:0; text-align:left;">
+                  <span style="font-size:14px; font-weight:700;">{{ it.name }}</span>
+                  <span style="{{ it.rarityStyle }}">{{ it.rarity }}</span>
+                </span>
+                <span style="font-size:12px; font-weight:600; color:var(--mute,#77727c);">{{ it.action }}</span>
+              </button>
+            </sc-for>
+          </div>
+        </sc-for>
+      </sc-if>
+    </aside>
+  </main>
+</div>
+
+<sc-if value="{{ shareOpen }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closeShare }}" style="position:fixed; inset:0; z-index:50; background:rgba(12,10,14,.6); backdrop-filter:blur(10px); display:flex; align-items:center; justify-content:center; padding:20px;">
+    <div onClick="{{ stop }}" style="display:flex; flex-direction:column; align-items:center; gap:14px;">
+      <sc-if value="{{ shareReady }}" hint-placeholder-val="{{ false }}">
+        <div role="img" aria-label="Карточка для сторис" style="{{ shareImgStyle }}"></div>
+      </sc-if>
+      <sc-if value="{{ shareLoading }}" hint-placeholder-val="{{ true }}">
+        <div style="height:min(78vh,720px); aspect-ratio:9/16; border-radius:22px; background:rgba(255,255,255,.08); display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px;">собираю карточку…</div>
+      </sc-if>
+      <div style="display:flex; gap:8px;">
+        <button onClick="{{ shareNative }}" style="height:46px; padding:0 20px; border-radius:999px; border:none; background:#fff; color:#17151a; font-weight:700; font-size:14px; cursor:pointer;">Отправить в сторис</button>
+        <button onClick="{{ download }}" style="height:46px; padding:0 18px; border-radius:999px; border:1px solid rgba(255,255,255,.3); background:transparent; color:#fff; font-weight:600; font-size:14px; cursor:pointer;">Скачать PNG</button>
+        <button onClick="{{ closeShare }}" style="height:46px; padding:0 18px; border-radius:999px; border:none; background:transparent; color:rgba(255,255,255,.75); font-weight:600; font-size:14px; cursor:pointer;">Закрыть</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light'|'dark'&quot;},&quot;particleDensity&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:0.5,&quot;max&quot;:2,&quot;step&quot;:0.1,&quot;default&quot;:1,&quot;tsType&quot;:&quot;number&quot;},&quot;eyesFollow&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const CATS = [
+  { key: 'bold', label: 'Яркие', css: '#ff3b30', shades: ['#e3202f', '#ff5236', '#ff2f7a', '#ff7b1c'], kind: 'crumb' },
+  { key: 'goth', label: 'Тёмные', css: '#241e2a', shades: ['#1a161e', '#4a0f22', '#2c1f40', '#3a0a1a'], kind: 'drop' },
+  { key: 'clean', label: 'Нюд', css: '#e3b598', shades: ['#e9bfa1', '#d69c7a', '#f2d4bf', '#c48766'], kind: 'powder' },
+  { key: 'coquette', label: 'Пастель', css: '#ffb3cf', shades: ['#ffb3cc', '#f79cc2', '#ffd0e0', '#e1b4ff'], kind: 'bow' },
+  { key: 'glow', label: 'Уход', css: 'radial-gradient(circle at 35% 30%,#ffffff,#d6eef8 70%)', shades: ['#eaf7ff', '#fff3df', '#ddf7ee', '#f1eaff'], kind: 'bubble' },
+  { key: 'disco', label: 'Блёстки', css: 'linear-gradient(135deg,#f2c75c,#e6b8ff 50%,#9fe3ff)', shades: ['#dcdce8', '#f2c75c', '#b7a2ff', '#9fe3ff'], kind: 'glitter' },
+];
+const CAT = Object.fromEntries(CATS.map(c => [c.key, c]));
+const TYPES = {
+  bold: { name: 'Bold', cap: 'красная помада — это не про губы, это про власть', body: '#ff5240', accent: '#ff2a4d', glowCol: '#ff7a5c', tr: .82, rough: .07, em: .14, irid: 0, sheen: 0, glow: .55, lid: .24, brow: .4, browR: 0, mouth: .45, smirk: .3, eye: 1 },
+  goth: { name: 'Гот', cap: 'чёрная подводка — это не макияж, это позиция', body: '#221d29', accent: '#9b5cff', glowCol: '#8a4dff', tr: .62, rough: .1, em: .03, irid: .45, sheen: 1, glow: .45, lid: .56, brow: .12, browR: 0, mouth: .1, smirk: .14, eye: 1 },
+  clean: { name: 'Clean girl', cap: 'выгляжу так, будто сплю по восемь часов. не сплю', body: '#f7d5c2', accent: '#e9a07a', glowCol: '#ffc9a8', tr: .55, rough: .26, em: .1, irid: 0, sheen: .3, glow: .4, lid: .26, brow: -.05, browR: 0, mouth: .42, smirk: .05, eye: .98 },
+  coquette: { name: 'Coquette', cap: 'бантик — это не аксессуар, это мировоззрение', body: '#ffbcd5', accent: '#ff6fa6', glowCol: '#ff9cc4', tr: .8, rough: .09, em: .12, irid: .15, sheen: .4, glow: .5, lid: .06, brow: -.18, browR: 0, mouth: .62, smirk: .06, eye: 1.1 },
+  glow: { name: 'Glow', cap: 'не потная, а сияющая. разница принципиальная', body: '#f2f9ff', accent: '#9ff2ff', glowCol: '#c9f6ff', tr: 1, rough: .03, em: .42, irid: .12, sheen: 0, glow: .95, lid: .14, brow: -.08, browR: 0, mouth: .4, smirk: .02, eye: 1.02 },
+  disco: { name: 'Disco', cap: 'если меня не видно из космоса — зачем вообще краситься', body: '#d8cfff', accent: '#ffd36b', glowCol: '#b99cff', tr: .88, rough: .05, em: .16, irid: 1, sheen: 0, glow: .7, lid: 0, brow: .18, browR: 0, mouth: .72, smirk: .18, eye: 1.08 },
+  chameleon: { name: 'Хамелеон', cap: 'у меня нет стиля. у меня их все', body: '#ffffff', accent: '#ffffff', glowCol: '#c7b3ff', tr: .85, rough: .06, em: .14, irid: .7, sheen: 0, glow: .7, lid: .1, brow: 0, browR: .34, mouth: .5, smirk: .34, eye: 1.04, rare: true },
+};
+const PRODUCTS = ['Помада', 'Тени', 'Подводка', 'Лак для ногтей', 'Румяна', 'Тональный крем', 'Блеск для губ', 'Хайлайтер', 'Сыворотка', 'Тушь'];
+const DEFAULT_SHELF = ['bold', 'goth', 'goth', 'goth', 'coquette', 'clean', 'coquette', 'disco', 'glow', 'goth'];
+const PRESETS = {
+  bold: { bold: 5, coquette: 3, clean: 2 }, goth: { goth: 5, bold: 3, disco: 2 }, clean: { clean: 5, glow: 3, coquette: 2 },
+  coquette: { coquette: 5, clean: 3, disco: 2 }, glow: { glow: 5, clean: 3, coquette: 2 }, disco: { disco: 5, coquette: 3, bold: 2 },
+  chameleon: { bold: 2, goth: 2, clean: 2, coquette: 2, glow: 1, disco: 1 },
+};
+const ITEMS = [
+  { id: 'clip', slot: 'head', name: 'Заколка-краб', rarity: 'common', css: 'radial-gradient(circle at 30% 30%,#9adf8f,#2f9a4c 45%,#0f5a28)' },
+  { id: 'beanie', slot: 'head', name: 'Шапочка', rarity: 'rare', css: '#8fd6c0' },
+  { id: 'crown', slot: 'head', name: 'Корона', rarity: 'secret', css: 'linear-gradient(135deg,#ffe08a,#f2b035)' },
+  { id: 'glasses', slot: 'eyes', name: 'Очки', rarity: 'rare', css: '#111114' },
+  { id: 'bracelet', slot: 'ray', name: 'Браслет из бусин', rarity: 'common', css: 'conic-gradient(#ff5236,#ffb3cc,#b7a2ff,#9fe3ff,#ff5236)' },
+  { id: 'dust', slot: 'aura', name: 'Звёздная пыль', rarity: 'secret', css: 'radial-gradient(circle,#fff6c9,#ffd36b 45%,#b99cff)' },
+];
+const SLOTS = [{ key: 'head', label: 'Голова' }, { key: 'eyes', label: 'Глаза' }, { key: 'ray', label: 'Луч' }, { key: 'aura', label: 'Фон и аура' }];
+const RAR = { common: 'обычный', rare: 'редкий', secret: 'секретный' };
+const THEMES = {
+  light: { bg: '#f4f2ef', stage: '#ebe6e1', panel: '#fbfaf8', ink: '#17151a', mute: '#77727c', line: 'rgba(23,21,26,.08)', chip: '#ece9e5', glass: 'rgba(255,255,255,.62)' },
+  dark: { bg: '#111013', stage: '#1a181d', panel: '#1a181d', ink: '#f3f1f4', mute: '#8f8a95', line: 'rgba(255,255,255,.08)', chip: '#262329', glass: 'rgba(30,28,33,.62)' },
+};
+
+class Component extends DCLogic {
+  state = { shelf: DEFAULT_SHELF.slice(), equipped: { head: 'clip', eyes: null, ray: null, aura: null }, tab: 'shelf', theme: null, shareOpen: false, shareUrl: '', hint: true };
+
+  stageRef = (el) => { this.stageEl = el; if (el && !this._started) { this._started = true; this.initScene(); } };
+  theme() { return this.state.theme || this.props.theme || 'light'; }
+  computeType(shelf = this.state.shelf) {
+    const counts = {}; CATS.forEach(c => counts[c.key] = 0); shelf.forEach(k => counts[k]++);
+    const sorted = CATS.map(c => c.key).sort((a, b) => counts[b] - counts[a]);
+    const top = sorted[0];
+    if (counts[top] <= 3) return { type: 'chameleon', accent: top, counts };
+    return { type: top, accent: counts[sorted[1]] > 0 ? sorted[1] : top, counts };
+  }
+  componentDidUpdate() { this.syncScene(); }
+  componentWillUnmount() { this._dead = true; if (this.S) this.S.dispose(); }
+  syncScene() {
+    const S = this.S; if (!S) return;
+    const { type, accent } = this.computeType();
+    S.setTarget(type, accent, THEMES[this.theme()].stage, !!this.state.equipped.aura);
+    S.setShelf(this.state.shelf.map((cat, i) => ({ cat, shade: CAT[cat].shades[i % 4] })), this.props.particleDensity ?? 1);
+    S.setEquip(this.state.equipped);
+    S.eyesFollow = this.props.eyesFollow ?? true;
+  }
+
+  async initScene() {
+    let THREE;
+    try { THREE = await import('https://unpkg.com/three@0.160.0/build/three.module.js'); } catch (e) { console.error(e); return; }
+    if (this._dead || !this.stageEl) return;
+    const host = this.stageEl;
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.domElement.style.cssText = 'width:100%;height:100%;display:block;touch-action:none;cursor:grab;';
+    host.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(30, 1, .1, 100);
+    const BASEZ = 10.6; camera.position.set(0, -.45, BASEZ);
+
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const env = new THREE.Scene(); env.background = new THREE.Color(0x2a2830);
+    const panel = (w, h, p, int, col) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(col || 0xffffff).multiplyScalar(int), side: THREE.DoubleSide })); m.position.set(p[0], p[1], p[2]); m.lookAt(0, 0, 0); env.add(m); };
+    panel(8, 3, [0, 7, 3], 5); panel(2.5, 9, [-7, 1, 4], 3.2); panel(2.5, 9, [7, 0, 3], 2.4, 0xfff0f6); panel(10, 3, [0, -6, 1], 1, 0xe6eeff); panel(6, 6, [0, 3, -8], 1.6);
+    scene.environment = pmrem.fromScene(env, .03).texture;
+
+    const key = new THREE.DirectionalLight(0xffffff, 1.2); key.position.set(-2, 3, 5); scene.add(key);
+    const purple = new THREE.PointLight(0x9b5cff, 0, 10); purple.position.set(1.5, 1.2, -2); scene.add(purple);
+    const purple2 = new THREE.PointLight(0xb070ff, 0, 10); purple2.position.set(-2, -1, 2); scene.add(purple2);
+
+    const bgMat = new THREE.ShaderMaterial({
+      uniforms: { uBg: { value: new THREE.Vector3(.92, .9, .88) }, uGlow: { value: new THREE.Vector3(1, 1, 1) }, uAmt: { value: .5 } },
+      vertexShader: 'varying vec2 vP; void main(){ vP=position.xy; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+      fragmentShader: 'uniform vec3 uBg; uniform vec3 uGlow; uniform float uAmt; varying vec2 vP; float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);} void main(){ vec2 p=vP-vec2(0.0,0.2); float g=exp(-dot(p,p)/(2.0*1.6*1.6)); vec3 c=mix(uBg,uGlow,clamp(g*uAmt,0.0,1.0)); c+=(h(gl_FragCoord.xy)-0.5)/255.0; gl_FragColor=vec4(c,1.0); }',
+      depthWrite: false, toneMapped: false,
+    });
+    const bg = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), bgMat); bg.position.z = -5; scene.add(bg);
+
+    const root = new THREE.Group(); scene.add(root);
+    const star = new THREE.Group(); root.add(star);
+
+    // body
+    const geo = new THREE.SphereGeometry(1, 128, 128);
+    const pos = geo.attributes.position, N = pos.count;
+    const tipF = new Float32Array(N), rb = new Float32Array(N * 3);
+    const tmpC = new THREE.Color();
+    const RN = [5, 5, 6, 7, 8, 8][Math.floor(Math.random() * 6)], SP = 2 * Math.PI / RN;
+    const rays = [], A0 = Math.PI / 2 + (Math.random() - .5) * .14;
+    for (let k = 0; k < RN; k++) {
+      const alt = RN === 8 && k % 2 === 1;
+      rays.push({ a: A0 + k * SP + (k ? (Math.random() - .5) * SP * .26 : 0), L: k === 0 ? .72 + Math.random() * .1 : alt ? .34 + Math.random() * .18 : .5 + Math.random() * .36, w: SP * (alt ? .4 : .52) * (.85 + Math.random() * .3) });
+    }
+    const L0 = rays[0].L, WOB = Math.random() * 6.28;
+    const starR = (th) => { let best = 0, bf = 0; for (const r of rays) { const d = Math.abs(Math.atan2(Math.sin(th - r.a), Math.cos(th - r.a))) / r.w; if (d < 1) { const g = Math.pow(Math.cos(d * Math.PI / 2), 2.4); if (r.L * g > best) { best = r.L * g; bf = g; } } } return { f: bf, s: .96 + .025 * Math.sin(3 * th + WOB) + best }; };
+    for (let i = 0; i < N; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const rho = Math.hypot(x, y), th = Math.atan2(y, x);
+      const { f, s } = starR(th);
+      const T = .68 - .18 * f * rho;
+      pos.setXYZ(i, x * s, y * s, z * T);
+      tipF[i] = Math.pow(f, 4) * Math.pow(rho, 3);
+      tmpC.setHSL(((th / (2 * Math.PI) + .5) + y * .12 + z * .1 + 1) % 1, .85, .66);
+      rb[i * 3] = tmpC.r; rb[i * 3 + 1] = tmpC.g; rb[i * 3 + 2] = tmpC.b;
+    }
+    geo.computeVertexNormals();
+    const nrm = geo.attributes.normal, nmap = new Map();
+    for (let i = 0; i < N; i++) {
+      const k = Math.round(pos.getX(i) * 1e4) + ',' + Math.round(pos.getY(i) * 1e4) + ',' + Math.round(pos.getZ(i) * 1e4);
+      let a = nmap.get(k); if (!a) { a = [0, 0, 0, []]; nmap.set(k, a); }
+      a[0] += nrm.getX(i); a[1] += nrm.getY(i); a[2] += nrm.getZ(i); a[3].push(i);
+    }
+    nmap.forEach(a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; a[3].forEach(i => nrm.setXYZ(i, a[0] / l, a[1] / l, a[2] / l)); });
+    const vcol = new THREE.BufferAttribute(new Float32Array(N * 3), 3); geo.setAttribute('color', vcol);
+    const bodyMat = new THREE.MeshPhysicalMaterial({
+      vertexColors: true, color: 0xffffff, transmission: .9, thickness: 1.3, roughness: .08, ior: 1.4,
+      clearcoat: 1, clearcoatRoughness: .05, iridescence: 0, iridescenceIOR: 1.5, iridescenceThicknessRange: [200, 600],
+      sheen: 0, sheenColor: new THREE.Color('#9b5cff'), sheenRoughness: .35, emissive: new THREE.Color(0xffffff), emissiveIntensity: .1,
+      attenuationColor: new THREE.Color(1, 1, 1), attenuationDistance: 3, specularIntensity: 1,
+    });
+    const body = new THREE.Mesh(geo, bodyMat); star.add(body);
+    star.updateMatrixWorld(true);
+    const rc = new THREE.Raycaster();
+    const hitZ = (x, y) => { rc.set(new THREE.Vector3(x, y, 5), new THREE.Vector3(0, 0, -1)); const h = rc.intersectObject(body, false); return h.length ? h[0].point.z : null; };
+    const surfZ = (x, y) => hitZ(x, y) ?? .5;
+
+    // face
+    const inkMat = new THREE.MeshPhysicalMaterial({ color: '#1a1320', roughness: .25, clearcoat: 1, clearcoatRoughness: .1 });
+    const whiteMat = new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: .25, clearcoat: 1 });
+    const hlMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+    const lidMat = new THREE.MeshPhysicalMaterial({ color: '#ff5240', roughness: .2, clearcoat: 1, side: THREE.DoubleSide });
+    const EX = .31, EY = .12;
+    const eyes = [-1, 1].map(sd => {
+      const g = new THREE.Group(); const z = surfZ(sd * EX, EY); g.position.set(sd * EX, EY, z - .04); g.scale.set(1, 1, .5);
+      g.add(new THREE.Mesh(new THREE.SphereGeometry(.2, 32, 24), whiteMat));
+      const iris = new THREE.Group(); const ir = new THREE.Mesh(new THREE.SphereGeometry(.152, 32, 24), inkMat); ir.position.z = .07; iris.add(ir); g.add(iris);
+      const h1 = new THREE.Mesh(new THREE.SphereGeometry(.04, 16, 12), hlMat); h1.position.set(-.05, .065, .225);
+      const h2 = new THREE.Mesh(new THREE.SphereGeometry(.018, 12, 8), hlMat); h2.position.set(.06, -.05, .215);
+      g.add(h1, h2);
+      const lid = new THREE.Mesh(new THREE.SphereGeometry(.213, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), lidMat); g.add(lid);
+      star.add(g);
+      return { g, iris, lid, sd };
+    });
+    const browGeo = new THREE.CapsuleGeometry(.024, .13, 4, 10);
+    const brows = [-1, 1].map(sd => { const m = new THREE.Mesh(browGeo, inkMat); m.position.set(sd * .31, .43, surfZ(sd * .31, .43) + .005); m.userData.sd = sd; star.add(m); return m; });
+    const mouthZ = surfZ(.03, -.2);
+    const mouth = new THREE.Group(); mouth.position.set(.03, -.2, mouthZ + .008); star.add(mouth);
+    const mArc = new THREE.Mesh(new THREE.TorusGeometry(.075, .019, 8, 28, Math.PI), inkMat); mArc.rotation.z = Math.PI; mouth.add(mArc);
+    const fang = new THREE.Mesh(new THREE.ConeGeometry(.026, .065, 14), whiteMat); fang.rotation.z = Math.PI; star.add(fang);
+    const cheekMat = new THREE.MeshBasicMaterial({ color: '#ff6fa6', transparent: true, opacity: .5, depthWrite: false });
+    const cheeks = [-1, 1].map(sd => { const m = new THREE.Mesh(new THREE.CircleGeometry(.085, 28), cheekMat); m.position.set(sd * .5, -.1, surfZ(sd * .5, -.1) + .012); m.rotation.y = sd * .3; m.scale.set(1.15, .8, 1); star.add(m); return m; });
+
+    // particles
+    const pGroup = new THREE.Group(); star.add(pGroup);
+    const G = {
+      cone: new THREE.ConeGeometry(.05, .09, 12), knot: new THREE.SphereGeometry(.024, 10, 8),
+      crumb: new THREE.DodecahedronGeometry(.05), drop: new THREE.SphereGeometry(.05, 16, 12), powder: new THREE.SphereGeometry(.04, 12, 10),
+      bubble: new THREE.SphereGeometry(.058, 16, 12), glitter: new THREE.CylinderGeometry(.05, .05, .01, 6),
+    };
+    const allParts = []; const slots = [];
+    const spawn = (cat, shade) => {
+      const kind = CAT[cat].kind, col = new THREE.Color(shade); let mesh, mat;
+      if (kind === 'bow') {
+        mat = new THREE.MeshStandardMaterial({ color: col, roughness: .35 }); mesh = new THREE.Group();
+        const l = new THREE.Mesh(G.cone, mat); l.rotation.z = -Math.PI / 2; l.position.x = -.045;
+        const r = new THREE.Mesh(G.cone, mat); r.rotation.z = Math.PI / 2; r.position.x = .045;
+        mesh.add(l, r, new THREE.Mesh(G.knot, mat)); mesh.scale.setScalar(1.15);
+      } else if (kind === 'crumb') { mat = new THREE.MeshStandardMaterial({ color: col, roughness: .5 }); mesh = new THREE.Mesh(G.crumb, mat); }
+      else if (kind === 'drop') { mat = new THREE.MeshPhysicalMaterial({ color: col, roughness: .05, clearcoat: 1 }); mesh = new THREE.Mesh(G.drop, mat); }
+      else if (kind === 'powder') { mat = new THREE.MeshStandardMaterial({ color: col, roughness: .9 }); mesh = new THREE.Mesh(G.powder, mat); }
+      else if (kind === 'bubble') { mat = new THREE.MeshPhysicalMaterial({ color: col, roughness: 0, clearcoat: 1, emissive: col, emissiveIntensity: .8 }); mesh = new THREE.Mesh(G.bubble, mat); }
+      else { mat = new THREE.MeshStandardMaterial({ color: col, metalness: 1, roughness: .15, emissive: col, emissiveIntensity: .3 }); mesh = new THREE.Mesh(G.glitter, mat); }
+      const th = Math.random() * Math.PI * 2, rho = Math.sqrt(Math.random()) * .82;
+      const { f, s } = starR(th); const zmax = (.68 - .18 * f * rho) * Math.sqrt(Math.max(0, 1 - rho * rho)) * .55;
+      const base = new THREE.Vector3(Math.cos(th) * rho * s * .82, Math.sin(th) * rho * s * .82, (Math.random() * 2 - 1) * zmax - .05);
+      const size = (kind === 'bow' ? 1.15 : 1) * (.75 + Math.random() * .5);
+      mesh.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+      mesh.scale.setScalar(0.001); pGroup.add(mesh);
+      const p = { mesh, mat, base, size, s: 0, ph: Math.random() * 6.28, sp: .3 + Math.random() * .5, amp: .03 + Math.random() * .05, spin: new THREE.Vector3(Math.random() - .5, Math.random() - .5, Math.random() - .5).multiplyScalar(kind === 'glitter' ? 2.4 : .8), dying: false };
+      allParts.push(p); return p;
+    };
+
+    // accessories
+    const acc = {};
+    const mkAcc = (id, g, parent = star) => { g.scale.setScalar(.001); g.visible = false; parent.add(g); acc[id] = { g, s: 0, t: 0 }; };
+    const goldMat = new THREE.MeshStandardMaterial({ color: '#f6c453', metalness: 1, roughness: .2, emissive: '#ff9d00', emissiveIntensity: .15, side: THREE.DoubleSide });
+    const tipR = (a) => { let r = .8; while (r < 3 && hitZ(Math.cos(a) * r, Math.sin(a) * r) !== null) r += .01; return r; };
+    const rayFit = (a, r) => {
+      const c = new THREE.Vector2(Math.cos(a) * r, Math.sin(a) * r), v = new THREE.Vector2(-Math.sin(a), Math.cos(a));
+      const side = s => { let w = 0; while (w < 1 && hitZ(c.x + v.x * w * s, c.y + v.y * w * s) !== null) w += .005; return w; };
+      return { c, w: (side(1) + side(-1)) / 2, off: (side(1) - side(-1)) / 2, d: surfZ(c.x, c.y) };
+    };
+    const fitHat = (g, a, want, tilt) => {
+      const tip = tipR(a); let r = tip - .1, f = rayFit(a, r);
+      while (r > .9 && f.w < want) { r -= .02; f = rayFit(a, r); }
+      const v = new THREE.Vector2(-Math.sin(a), Math.cos(a));
+      g.position.set(f.c.x + v.x * f.off, f.c.y + v.y * f.off, 0);
+      g.rotation.z = a - Math.PI / 2 + tilt;
+      return f;
+    };
+    { // crown
+      const g = new THREE.Group();
+      const f = fitHat(g, A0, .2, -.12);
+      g.userData.fit = [f.w / .235, 1, Math.max(f.d, .15) / .235];
+      g.add(new THREE.Mesh(new THREE.CylinderGeometry(.27, .24, .13, 40, 1, true), goldMat));
+      const gemMat = new THREE.MeshStandardMaterial({ color: '#ff5fa2', emissive: '#ff2f86', emissiveIntensity: .6, roughness: .1 });
+      for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2; const c = new THREE.Mesh(new THREE.ConeGeometry(.05, .16, 12), goldMat); c.position.set(Math.cos(a) * .26, .14, Math.sin(a) * .26); g.add(c); const gm = new THREE.Mesh(new THREE.SphereGeometry(.034, 12, 10), gemMat); gm.position.set(Math.cos(a) * .26, .24, Math.sin(a) * .26); g.add(gm); }
+      const sparks = new THREE.Group(); const spMat = new THREE.MeshBasicMaterial({ color: '#fff3c4', toneMapped: false });
+      for (let k = 0; k < 6; k++) { const m = new THREE.Mesh(new THREE.OctahedronGeometry(.04), spMat); m.scale.set(.5, 1.3, .5); m.userData.a = k / 6 * Math.PI * 2; sparks.add(m); }
+      g.add(sparks); g.userData.sparks = sparks;
+      const pl = new THREE.PointLight(0xffc04d, 2.5, 3); pl.position.set(0, .2, .3); g.add(pl);
+      const inner = new THREE.Group(); while (g.children.length) inner.add(g.children[0]); inner.scale.set(...g.userData.fit); inner.position.y = -.02; g.add(inner); g.userData.sparks = sparks;
+      mkAcc('crown', g);
+    }
+    { // beanie
+      const g = new THREE.Group();
+      const tipB = tipR(A0); let rB = Math.max(tipB - .32, 1); const fB = rayFit(A0, rB);
+      { const v = new THREE.Vector2(-Math.sin(A0), Math.cos(A0)); g.position.set(fB.c.x + v.x * fB.off, fB.c.y + v.y * fB.off, 0); g.rotation.z = A0 - Math.PI / 2 + .1; }
+      const f = fB;
+      const knit = new THREE.MeshStandardMaterial({ color: '#8fd6c0', roughness: .95 });
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(.34, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), knit); dome.scale.set(1, 1.05, .66); g.add(dome);
+      const brim = new THREE.Mesh(new THREE.TorusGeometry(.33, .07, 12, 40), knit); brim.rotation.x = Math.PI / 2; brim.scale.set(1, .66, 1); g.add(brim);
+      const pom = new THREE.Mesh(new THREE.SphereGeometry(.11, 20, 16), new THREE.MeshStandardMaterial({ color: '#ffd0e4', roughness: 1 })); pom.position.y = .38; g.add(pom);
+      const inner = new THREE.Group(); while (g.children.length) inner.add(g.children[0]);
+      const sx = Math.max(f.w + .05, .2) / .33, sy = Math.max((tipB - rB + .1) / .36, .8); inner.scale.set(sx, sy, (Math.max(f.d, .15) + .05) / (.33 * .66)); inner.position.y = -.03; g.add(inner);
+      mkAcc('beanie', g);
+    }
+    { // claw clip
+      const cx = Math.cos(A0) * 1.08 + Math.sin(A0) * .22, cy = Math.sin(A0) * 1.08 - Math.cos(A0) * .22;
+      const g = new THREE.Group(); g.position.set(cx, cy, surfZ(cx, cy) + .03); g.rotation.z = -.5;
+      const cv = document.createElement('canvas'); cv.width = cv.height = 256; const c2 = cv.getContext('2d');
+      c2.fillStyle = '#1f7a3a'; c2.fillRect(0, 0, 256, 256);
+      const gs = ['#0f5a28', '#2f9a4c', '#58c26e', '#9adf8f', '#0b4420', '#c9d98a'];
+      for (let k = 0; k < 90; k++) { c2.fillStyle = gs[k % gs.length]; c2.globalAlpha = .35 + Math.random() * .5; c2.beginPath(); const x = Math.random() * 256, y = Math.random() * 256, r = 6 + Math.random() * 26; c2.moveTo(x + r, y); for (let q = 1; q <= 6; q++) { const a = q / 6 * Math.PI * 2, rr = r * (.55 + Math.random() * .6); c2.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } c2.fill(); }
+      const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      const m = new THREE.MeshPhysicalMaterial({ map: tex, roughness: .1, clearcoat: 1, clearcoatRoughness: .04 });
+      [[-1, .36], [1, .3]].forEach(([sd, ht]) => {
+        const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(sd * .07, -ht / 2, 0), new THREE.Vector3(sd * .1, 0, .06), new THREE.Vector3(sd * .07, ht / 2, 0));
+        const band = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, .048, 14, false), m); band.scale.z = .6; g.add(band);
+        [-1, 1].forEach(e => { const cap = new THREE.Mesh(new THREE.SphereGeometry(.048, 14, 10), m); cap.scale.z = .6; cap.position.set(sd * .07, e * ht / 2, 0); g.add(cap); });
+      });
+      const gm = new THREE.MeshStandardMaterial({ color: '#e7c46a', metalness: 1, roughness: .22, emissive: '#7a5200', emissiveIntensity: .12 });
+      const fz = .05, FW = .17, FH = .12, tb = .016;
+      [[0, FH / 2, FW, tb], [0, -FH / 2, FW, tb], [-FW / 2, 0, tb, FH], [FW / 2, 0, tb, FH]].forEach(([x, y, w, hh]) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, hh, tb), gm); b.position.set(x, y + .02, fz); g.add(b); });
+      const spring = new THREE.Mesh(new THREE.CylinderGeometry(.018, .018, .13, 12), gm); spring.rotation.z = Math.PI / 2; spring.position.set(0, -.045, fz - .01); g.add(spring);
+      for (let k = 0; k < 5; k++) { const r = new THREE.Mesh(new THREE.TorusGeometry(.021, .005, 6, 12), gm); r.rotation.y = Math.PI / 2; r.position.set(-.05 + k * .025, -.045, fz - .01); g.add(r); }
+      mkAcc('clip', g);
+    }
+    { // glasses
+      const ez = surfZ(EX, EY) + .13;
+      const g = new THREE.Group(); g.position.set(0, EY, ez); g.rotation.z = .03;
+      const fm = new THREE.MeshPhysicalMaterial({ color: '#0c0c0e', roughness: .12, clearcoat: 1, clearcoatRoughness: .03 });
+      const lm = new THREE.MeshPhysicalMaterial({ color: '#2b2c33', roughness: .04, transparent: true, opacity: .78, clearcoat: 1 });
+      const ell = (p, rx, ry, cw) => { p.absellipse(0, 0, rx, ry, 0, Math.PI * 2, !cw); return p; };
+      [-1, 1].forEach(sd => {
+        const sh = ell(new THREE.Shape(), .3, .2); sh.holes.push(ell(new THREE.Path(), .245, .15, true));
+        const fr = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: .03, bevelEnabled: true, bevelThickness: .018, bevelSize: .016, bevelSegments: 4, curveSegments: 48 }), fm);
+        fr.position.set(sd * (EX + .015), 0, -.03); fr.rotation.z = sd * -.06; g.add(fr);
+        const l = new THREE.Mesh(new THREE.ShapeGeometry(ell(new THREE.Shape(), .25, .155), 48), lm); l.position.set(sd * (EX + .015), 0, -.012); l.rotation.z = sd * -.06; g.add(l);
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(.03, .045, .3), fm); arm.position.set(sd * (EX + .31), .03, -.16); g.add(arm);
+      });
+      const br = new THREE.Mesh(new THREE.TorusGeometry(.05, .028, 10, 18, Math.PI), fm); br.position.y = .02; g.add(br);
+      mkAcc('glasses', g);
+    }
+    const beads = [];
+    { // bracelet
+      const want = 18 * Math.PI / 180;
+      const ang = rays.slice(1).reduce((b, r) => Math.abs(Math.atan2(Math.sin(r.a - want), Math.cos(r.a - want))) < Math.abs(Math.atan2(Math.sin(b - want), Math.cos(b - want))) ? r.a : b, rays[1].a);
+      const d = 1 + (tipR(ang) - 1) * .5;
+      const u = new THREE.Vector3(Math.cos(ang), Math.sin(ang), 0), v = new THREE.Vector3(-Math.sin(ang), Math.cos(ang), 0);
+      const c = u.clone().multiplyScalar(d);
+      let a = .05; while (a < .8 && hitZ(c.x + v.x * a, c.y + v.y * a) !== null) a += .01;
+      const b = surfZ(c.x, c.y);
+      const g = new THREE.Group(); g.position.copy(c);
+      for (let k = 0; k < 14; k++) {
+        const ph = k / 14 * Math.PI * 2;
+        const m = new THREE.Mesh(new THREE.SphereGeometry(.055, 16, 12), new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: .1, clearcoat: 1 }));
+        m.position.copy(v.clone().multiplyScalar(Math.cos(ph) * (a + .045))).add(new THREE.Vector3(0, 0, Math.sin(ph) * (b + .045)));
+        g.add(m); beads.push(m);
+      }
+      mkAcc('bracelet', g);
+    }
+    const dust = new THREE.Group(); scene.add(dust);
+    { // aura
+      const g = new THREE.Group(); g.rotation.x = 1.2; g.rotation.y = .25;
+      for (let k = 0; k < 40; k++) {
+        const m = new THREE.Mesh(new THREE.OctahedronGeometry(.055), new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false }));
+        const a = k / 40 * Math.PI * 2 + Math.random() * .1, r = 2.05 + Math.random() * .4;
+        m.position.set(Math.cos(a) * r, Math.sin(a) * r, (Math.random() - .5) * .25);
+        m.userData = { ph: Math.random() * 6.28, h: Math.random() };
+        g.add(m);
+      }
+      mkAcc('dust', g, dust);
+    }
+
+    // state
+    const C = (h) => new THREE.Color(h);
+    const mkLook = () => ({ body: C('#ff5240'), accent: C('#ff2a4d'), glowCol: C('#ffffff'), bg: C('#ebe6e1'), tr: .8, rough: .08, em: .1, irid: 0, sheen: 0, glow: .5, rainbow: 0, purple: 0, lid: .2, brow: 0, browR: 0, mouth: .5, smirk: 0, eye: 1 });
+    const cur = mkLook(), tgt = mkLook();
+    const NUM = ['tr', 'rough', 'em', 'irid', 'sheen', 'glow', 'rainbow', 'purple', 'lid', 'brow', 'browR', 'mouth', 'smirk', 'eye'];
+    let lastType = null, first = true, colorsDirty = true, squash = 0;
+    const cham = C('#d9c8ff');
+
+    const S = this.S = {
+      renderer, scene, camera, eyesFollow: true,
+      setTarget(type, accentKey, stageHex, aura) {
+        const T = TYPES[type], A = TYPES[accentKey];
+        tgt.body.set(T.body);
+        tgt.accent.set(type === 'chameleon' ? '#ffffff' : (accentKey === type ? T.accent : A.accent));
+        tgt.glowCol.set(T.glowCol).lerp(C(A.accent), type === 'chameleon' ? .2 : .35);
+        tgt.bg.set(stageHex);
+        NUM.forEach(k => { if (T[k] !== undefined) tgt[k] = T[k]; });
+        tgt.rainbow = type === 'chameleon' ? 1 : 0; tgt.purple = type === 'goth' ? 1 : 0;
+        if (aura) tgt.glow = Math.min(1.2, tgt.glow + .25);
+        if (lastType && lastType !== type) squash = 1;
+        lastType = type;
+        if (first) { cur.body.copy(tgt.body); cur.accent.copy(tgt.accent); cur.glowCol.copy(tgt.glowCol); cur.bg.copy(tgt.bg); NUM.forEach(k => cur[k] = tgt[k]); first = false; colorsDirty = true; }
+      },
+      setShelf(items, density) {
+        items.forEach((it, i) => {
+          const s = slots[i];
+          if (s && s.cat === it.cat && s.density === density) return;
+          if (s) s.parts.forEach(p => p.dying = true);
+          const n = Math.max(1, Math.round((it.cat === 'disco' ? 11 : 6) * density));
+          const parts = []; for (let j = 0; j < n; j++) parts.push(spawn(it.cat, it.shade));
+          slots[i] = { cat: it.cat, density, parts };
+        });
+        beads.forEach((m, k) => m.material.color.set(items[k % items.length].shade));
+      },
+      setEquip(eq) { const prev = {}; ITEMS.forEach(it => { const a = acc[it.id]; const on = eq[it.slot] === it.id; if (on && a.t === 0) squash = Math.max(squash, .5); a.t = on ? 1 : 0; }); },
+      renderNow() { renderer.render(scene, camera); },
+      dispose() { cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('pointermove', onMove); renderer.dispose(); },
+    };
+
+    // interaction
+    let rotY = 0, rotX = 0, velY = 0, velX = 0, dragging = false, lastX = 0, lastY = 0, idleT = 0, downAt = 0, downX = 0, downY = 0;
+    let gx = 0, gy = 0, gcx = 0, gcy = 0;
+    const cv = renderer.domElement;
+    cv.addEventListener('pointerdown', e => { dragging = true; lastX = downX = e.clientX; lastY = downY = e.clientY; downAt = performance.now(); velX = velY = 0; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; });
+    cv.addEventListener('pointermove', e => { if (!dragging) return; const dx = e.clientX - lastX, dy = e.clientY - lastY; lastX = e.clientX; lastY = e.clientY; rotY += dx * .01; rotX = Math.max(-.7, Math.min(.7, rotX + dy * .006)); velY = dx * .01; velX = dy * .006; idleT = 0; if (this.state.hint && Math.abs(e.clientX - downX) > 8) this.setState({ hint: false }); });
+    const up = e => { if (!dragging) return; dragging = false; cv.style.cursor = 'grab'; if (Math.hypot(e.clientX - downX, e.clientY - downY) < 6 && performance.now() - downAt < 350) { squash = 1; blinkStart = t; } };
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    const onMove = e => { const r = host.getBoundingClientRect(); gx = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (r.width / 2))); gy = Math.max(-1, Math.min(1, -(e.clientY - (r.top + r.height * .45)) / (r.height / 2))); };
+    window.addEventListener('pointermove', onMove);
+
+    const ro = new ResizeObserver(() => {
+      const w = host.clientWidth, h = host.clientHeight; if (!w || !h) return;
+      renderer.setSize(w, h, false); camera.aspect = w / h; camera.position.z = BASEZ * Math.max(1, .82 / camera.aspect); camera.updateProjectionMatrix();
+    });
+    ro.observe(host);
+
+    const clock = new THREE.Clock(); let t = 0, raf = 0, nextBlink = 2, blinkStart = -10;
+    const tmpV = new THREE.Vector3(), lidC = new THREE.Color(), emC = new THREE.Color(), srgb = new THREE.Color();
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const dt = Math.min(clock.getDelta(), .05); t += dt;
+      const k = 1 - Math.exp(-dt * 3.2);
+      const before = cur.body.r + cur.body.g + cur.body.b + cur.accent.r + cur.accent.g + cur.accent.b + cur.rainbow;
+      cur.body.lerp(tgt.body, k); cur.accent.lerp(tgt.accent, k); cur.glowCol.lerp(tgt.glowCol, k); cur.bg.lerp(tgt.bg, k * 1.5);
+      NUM.forEach(n => cur[n] += (tgt[n] - cur[n]) * k);
+      const after = cur.body.r + cur.body.g + cur.body.b + cur.accent.r + cur.accent.g + cur.accent.b + cur.rainbow;
+      if (Math.abs(after - before) > 1e-4) colorsDirty = true;
+      if (colorsDirty) {
+        const a = vcol.array, B = cur.body, A = cur.accent, R = cur.rainbow;
+        for (let i = 0; i < N; i++) {
+          const tf = Math.min(1, tipF[i] * 1.1);
+          let r = B.r + (A.r - B.r) * tf, g = B.g + (A.g - B.g) * tf, b = B.b + (A.b - B.b) * tf;
+          a[i * 3] = r + (rb[i * 3] - r) * R; a[i * 3 + 1] = g + (rb[i * 3 + 1] - g) * R; a[i * 3 + 2] = b + (rb[i * 3 + 2] - b) * R;
+        }
+        vcol.needsUpdate = true; colorsDirty = false;
+      }
+      bodyMat.transmission = cur.tr; bodyMat.roughness = cur.rough; bodyMat.iridescence = cur.irid + cur.rainbow * .0; bodyMat.sheen = cur.sheen;
+      bodyMat.sheenColor.copy(cur.accent).lerp(C('#9b5cff'), cur.purple);
+      emC.copy(cur.body).lerp(cur.accent, .45).lerp(C('#ffffff'), cur.rainbow * .5); bodyMat.emissive.copy(emC); bodyMat.emissiveIntensity = cur.em * (1 + Math.sin(t * 1.6) * .12);
+      bodyMat.attenuationColor.copy(cur.body).lerp(C('#ffffff'), .35);
+      lidC.copy(cur.body).lerp(cham, cur.rainbow).multiplyScalar(.9); lidMat.color.copy(lidC);
+      cheekMat.color.copy(cur.accent).lerp(C('#ff7fb3'), cur.rainbow); cheekMat.opacity = .38 + .2 * (1 - cur.purple * .4);
+      purple.intensity = cur.purple * 18; purple2.intensity = cur.purple * 8;
+      cur.bg.getRGB(srgb, THREE.SRGBColorSpace); bgMat.uniforms.uBg.value.set(srgb.r, srgb.g, srgb.b);
+      cur.glowCol.getRGB(srgb, THREE.SRGBColorSpace); bgMat.uniforms.uGlow.value.set(srgb.r, srgb.g, srgb.b);
+      bgMat.uniforms.uAmt.value = cur.glow * (THEMES.dark.stage === '#1a181d' && cur.bg.r < .1 ? .5 : .62);
+
+      // rotation
+      if (!dragging) {
+        rotY += velY; rotX += velX; velY *= .93; velX *= .85; idleT += dt;
+        if (idleT > 2.5) { const target = Math.round(rotY / (Math.PI * 2)) * Math.PI * 2; rotY += (target - rotY) * dt * 1.5; rotX += (0 - rotX) * dt * 2; }
+        rotX = Math.max(-.7, Math.min(.7, rotX));
+      }
+      squash *= Math.exp(-dt * 3.2);
+      const sq = Math.sin(t * 16) * .09 * squash;
+      star.scale.set(1 - sq * .6, 1 + sq, 1 - sq * .6);
+      root.position.y = Math.sin(t * 1.3) * .06;
+      star.rotation.set(rotX + Math.sin(t * .9) * .04, rotY + Math.sin(t * .7) * .12, Math.sin(t * .8) * .05);
+      dust.position.y = root.position.y;
+
+      // face
+      if (t > nextBlink) { blinkStart = t; nextBlink = t + 2.2 + Math.random() * 3.2; }
+      const bp = (t - blinkStart) / .17; const blink = bp >= 0 && bp <= 1 ? Math.sin(bp * Math.PI) : 0;
+      if (S.eyesFollow) { gcx += (gx - gcx) * k * 2; gcy += (gy - gcy) * k * 2; } else { gcx += (Math.sin(t * .5) * .6 - gcx) * k; gcy += (Math.cos(t * .37) * .3 - gcy) * k; }
+      eyes.forEach(e => {
+        const L = Math.max(cur.lid, blink);
+        e.lid.rotation.x = -1.6 + L * 3.15;
+        e.g.scale.set(cur.eye, cur.eye, .5);
+        e.iris.position.set(gcx * .04, gcy * .032 + .005, 0);
+      });
+      brows.forEach(b => { const sd = b.userData.sd; b.rotation.z = Math.PI / 2 + sd * cur.brow; b.position.y = .43 + (cur.eye - 1) * .2 + (sd > 0 ? cur.browR * .1 : 0) + cur.brow * -.02 + blink * -.015; });
+      const curve = .12 + cur.mouth * .9;
+      mouth.scale.set(1 + cur.smirk * .15, curve, 1); mouth.rotation.z = cur.smirk * .35;
+      const fx = .036; fang.position.set(mouth.position.x + fx, mouth.position.y - Math.sqrt(.075 * .075 - fx * fx) * curve + fx * Math.sin(cur.smirk * .35) - .03, mouthZ + .012);
+
+      // particles
+      for (let i = allParts.length - 1; i >= 0; i--) {
+        const p = allParts[i];
+        p.s += ((p.dying ? 0 : 1) - p.s) * Math.min(1, dt * 4);
+        if (p.dying && p.s < .02) { pGroup.remove(p.mesh); p.mat.dispose(); allParts.splice(i, 1); continue; }
+        const w = t * p.sp + p.ph;
+        p.mesh.position.set(p.base.x + Math.sin(w) * p.amp, p.base.y + Math.cos(w * .8) * p.amp, p.base.z + Math.sin(w * 1.3) * p.amp * .4);
+        p.mesh.rotation.x += p.spin.x * dt; p.mesh.rotation.y += p.spin.y * dt; p.mesh.rotation.z += p.spin.z * dt;
+        p.mesh.scale.setScalar(Math.max(.001, p.s * p.size));
+      }
+
+      // accessories
+      Object.values(acc).forEach(a => {
+        const v = a.s; a.s += (a.t - a.s) * Math.min(1, dt * 7);
+        const el = a.t ? 1 + Math.sin(a.s * Math.PI) * .15 : 1;
+        a.g.visible = a.s > .01; a.g.scale.setScalar(Math.max(.001, a.s * el));
+      });
+      const cr = acc.crown.g;
+      if (cr.visible) {
+        goldMat.emissiveIntensity = .15 + (Math.sin(t * 3) * .5 + .5) * .45;
+        cr.userData.sparks.children.forEach((m, i) => { const a = m.userData.a + t * 1.2; m.position.set(Math.cos(a) * .48, .15 + Math.sin(t * 2 + i) * .08, Math.sin(a) * .48); const s = .6 + Math.max(0, Math.sin(t * 4 + i * 1.7)) * .9; m.scale.set(.5 * s, 1.3 * s, .5 * s); m.rotation.y = t * 3; });
+      }
+      const dg = acc.dust.g;
+      if (dg.visible) {
+        dg.rotation.z = t * .25;
+        dg.children.forEach(m => { const u = m.userData; const tw = .5 + Math.max(0, Math.sin(t * 3 + u.ph)) * 1.1; m.scale.set(tw * .7, tw * 1.4, tw * .7); m.rotation.z = -t * .25; m.material.color.setHSL((u.h + t * .08) % 1, .9, .72); });
+      }
+      renderer.render(scene, camera);
+    };
+    this.syncScene();
+    tick();
+  }
+
+  async makeCard() {
+    const S = this.S; if (!S) return '';
+    try { await Promise.all([document.fonts.load('600 80px Unbounded'), document.fonts.load('500 40px Manrope'), document.fonts.load('700 40px Manrope')]); } catch (e) { }
+    const { type, accent } = this.computeType(); const T = TYPES[type]; const th = THEMES[this.theme()];
+    const W = 1080, H = 1920; const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+    g.fillStyle = th.stage; g.fillRect(0, 0, W, H);
+    const glow = g.createRadialGradient(540, 900, 0, 540, 900, 700); glow.addColorStop(0, T.glowCol + '55'); glow.addColorStop(1, T.glowCol + '00');
+    g.fillStyle = glow; g.fillRect(0, 0, W, H);
+    S.renderNow();
+    const src = S.renderer.domElement, sw = src.width, sh = src.height, side = Math.min(sw, sh);
+    const tmp = document.createElement('canvas'); tmp.width = tmp.height = 1080; const tg = tmp.getContext('2d');
+    tg.drawImage(src, (sw - side) / 2, (sh - side) / 2, side, side, 0, 0, 1080, 1080);
+    tg.globalCompositeOperation = 'destination-in';
+    const m = tg.createRadialGradient(540, 540, 400, 540, 540, 540); m.addColorStop(0, '#000'); m.addColorStop(1, 'rgba(0,0,0,0)');
+    tg.fillStyle = m; tg.fillRect(0, 0, 1080, 1080);
+    g.drawImage(tmp, 0, 360);
+    g.textBaseline = 'alphabetic';
+    g.fillStyle = th.ink; g.font = '600 40px Unbounded'; g.fillText('cosmi', 84, 140);
+    g.font = '600 76px Unbounded'; g.fillText('моя косметичка', 84, 270); g.fillText('выглядит так', 84, 362);
+    g.fillStyle = th.mute; g.font = '700 34px Manrope'; g.fillText('мой тип', 84, 1500);
+    if (T.rare) {
+      const x = 84 + g.measureText('мой тип').width + 20;
+      const lg = g.createLinearGradient(x, 0, x + 200, 0); lg.addColorStop(0, '#ffd36b'); lg.addColorStop(.5, '#ff8fc0'); lg.addColorStop(1, '#9fd8ff');
+      g.fillStyle = lg; g.beginPath(); g.roundRect(x, 1466, 200, 46, 23); g.fill();
+      g.fillStyle = '#17151a'; g.font = '800 26px Manrope'; g.fillText('редкий тип', x + 26, 1498);
+    }
+    g.fillStyle = th.ink; g.font = '600 112px Unbounded'; g.fillText(T.name, 78, 1626);
+    g.font = '500 42px Manrope';
+    const words = T.cap.split(' '); let line = '', y = 1702;
+    words.forEach(wd => { const test = line ? line + ' ' + wd : wd; if (g.measureText(test).width > 912 && line) { g.fillText(line, 84, y); y += 56; line = wd; } else line = test; });
+    if (line) g.fillText(line, 84, y);
+    g.fillStyle = th.mute; g.font = '600 30px Manrope'; g.fillText('сканируй косметику в @cosmi_bot', 84, 1856);
+    return c.toDataURL('image/png');
+  }
+
+  renderVals() {
+    const th = THEMES[this.theme()];
+    const { type, accent, counts } = this.computeType();
+    const T = TYPES[type];
+    const setShelf = (shelf) => this.setState({ shelf });
+    const chip = (active) => ({ height: 36, padding: '0 14px', borderRadius: 999, border: 'none', fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'background .25s, color .25s', background: active ? 'var(--ink)' : 'var(--chip)', color: active ? 'var(--bg)' : 'var(--ink)' });
+    const tab = (active) => ({ flex: 1, height: 38, border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer', background: active ? 'var(--panel)' : 'transparent', color: active ? 'var(--ink)' : 'var(--mute)', boxShadow: active ? '0 1px 3px rgba(0,0,0,.08)' : 'none', transition: 'all .2s' });
+    const rarStyle = (r) => r === 'secret'
+      ? { fontSize: 12, fontWeight: 800, background: 'linear-gradient(90deg,#e7a400,#ff5fa2,#7b6cff)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }
+      : { fontSize: 12, fontWeight: 700, color: r === 'rare' ? '#7b6cff' : 'var(--mute)' };
+    return {
+      themeVars: { '--bg': th.bg, '--stage': th.stage, '--panel': th.panel, '--ink': th.ink, '--mute': th.mute, '--line': th.line, '--chip': th.chip, '--glass': th.glass, minHeight: '100vh' },
+      stageRef: this.stageRef,
+      themeLabel: this.theme() === 'light' ? 'Тёмный фон' : 'Светлый фон',
+      toggleTheme: () => this.setState({ theme: this.theme() === 'light' ? 'dark' : 'light' }),
+      presets: Object.keys(PRESETS).map(k => ({
+        label: TYPES[k].name, style: chip(type === k),
+        onClick: () => { const shelf = []; Object.entries(PRESETS[k]).forEach(([c, n]) => { for (let i = 0; i < n; i++) shelf.push(c); }); setShelf(shelf); },
+      })),
+      hint: this.state.hint,
+      isRare: !!T.rare, typeName: T.name, typeCaption: T.cap,
+      bodyLabel: type === 'chameleon' ? 'радуга' : TYPES[type].name, accentLabel: TYPES[accent].name,
+      openShare: async () => { this.setState({ shareOpen: true, shareUrl: '' }); const url = await this.makeCard(); this.setState({ shareUrl: url }); },
+      tabShelfStyle: tab(this.state.tab === 'shelf'), tabInvStyle: tab(this.state.tab === 'inv'),
+      showShelf: () => this.setState({ tab: 'shelf' }), showInv: () => this.setState({ tab: 'inv' }),
+      isShelf: this.state.tab === 'shelf', isInv: this.state.tab === 'inv',
+      dist: CATS.filter(c => counts[c.key] > 0).map(c => ({ label: c.label + ': ' + counts[c.key], style: { flex: counts[c.key], background: c.css, borderRadius: 99, boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.06)', transition: 'flex .4s' } })),
+      legend: CATS.map(c => ({ label: c.label, count: counts[c.key], dotStyle: { width: 10, height: 10, borderRadius: '50%', background: c.css, flex: 'none', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.1)' } })),
+      rows: this.state.shelf.map((cat, i) => {
+        const shade = CAT[cat].shades[i % 4];
+        const bgDot = cat === 'disco' ? `radial-gradient(circle at 30% 28%, #ffffffcc, transparent 38%), conic-gradient(from 30deg, ${shade}, #ffffff, ${shade}, #e9e3ff, ${shade})` : `radial-gradient(circle at 32% 28%, #ffffff66, transparent 42%), ${shade}`;
+        return {
+          name: PRODUCTS[i], catLabel: CAT[cat].label,
+          dotStyle: { width: 34, height: 34, borderRadius: 12, background: bgDot, flex: 'none', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.08)', transition: 'background .3s' },
+          opts: CATS.map(c => ({
+            title: c.label,
+            style: { width: 20, height: 20, borderRadius: '50%', border: 'none', padding: 0, cursor: 'pointer', background: c.css, boxShadow: c.key === cat ? '0 0 0 2px var(--panel), 0 0 0 4px var(--ink)' : 'inset 0 0 0 1px rgba(0,0,0,.1)', transition: 'box-shadow .2s' },
+            onClick: () => { const shelf = this.state.shelf.slice(); shelf[i] = c.key; setShelf(shelf); },
+          })),
+        };
+      }),
+      inv: SLOTS.map(s => ({
+        label: s.label,
+        items: ITEMS.filter(it => it.slot === s.key).map(it => {
+          const on = this.state.equipped[s.key] === it.id;
+          return {
+            name: it.name, rarity: RAR[it.rarity], rarityStyle: rarStyle(it.rarity), action: on ? 'снять' : 'надеть',
+            dotStyle: { width: 36, height: 36, borderRadius: 12, background: it.css, flex: 'none', boxShadow: it.rarity === 'secret' ? '0 0 14px rgba(255,200,80,.55)' : 'inset 0 0 0 1px rgba(0,0,0,.08)' },
+            cardStyle: { display: 'flex', alignItems: 'center', gap: 12, padding: 10, borderRadius: 16, cursor: 'pointer', textAlign: 'left', color: 'var(--ink)', background: on ? 'var(--chip)' : 'transparent', border: on ? '1px solid var(--ink)' : '1px solid var(--line)', transition: 'all .2s' },
+            onClick: () => this.setState({ equipped: { ...this.state.equipped, [s.key]: on ? null : it.id } }),
+          };
+        }),
+      })),
+      shareOpen: this.state.shareOpen, shareUrl: this.state.shareUrl,
+      shareImgStyle: { height: 'min(78vh,720px)', aspectRatio: '9/16', borderRadius: 22, boxShadow: '0 30px 80px rgba(0,0,0,.4)', backgroundImage: this.state.shareUrl ? `url(${this.state.shareUrl})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center' },
+      shareReady: !!this.state.shareUrl, shareLoading: !this.state.shareUrl,
+      closeShare: () => this.setState({ shareOpen: false }),
+      stop: (e) => e.stopPropagation(),
+      download: () => { if (!this.state.shareUrl) return; const a = document.createElement('a'); a.href = this.state.shareUrl; a.download = 'cosmi-story.png'; a.click(); },
+      shareNative: async () => {
+        const url = this.state.shareUrl; if (!url) return;
+        try {
+          const blob = await (await fetch(url)).blob(); const file = new File([blob], 'cosmi-story.png', { type: 'image/png' });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'моя косметичка выглядит так' }); return; }
+        } catch (e) { }
+        const a = document.createElement('a'); a.href = url; a.download = 'cosmi-story.png'; a.click();
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

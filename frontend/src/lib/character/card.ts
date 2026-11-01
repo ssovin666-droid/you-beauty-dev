@@ -26,7 +26,7 @@ async function ensureFonts() {
 }
 
 export const BOT_USERNAME: string =
-  import.meta.env.VITE_BOT_USERNAME || 'you_beauty_bot'
+  import.meta.env.VITE_BOT_USERNAME || 'cosmi_bbot'
 
 // Сторис 1080×1920 по макету референса.
 // starCanvas — кадр WebGL, отрисованный прямо перед вызовом.

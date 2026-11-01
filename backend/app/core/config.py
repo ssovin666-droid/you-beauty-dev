@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     app_name: str = "You Beauty API"
     database_url: str
     bot_token: str = ""
-    bot_username: str = "you_beauty_bot"
+    bot_username: str = "cosmi_bbot"
     mini_app_url: str = "http://localhost:5173"
     openai_api_key: str = ""
     amplitude_api_key: str = ""

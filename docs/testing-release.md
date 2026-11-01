@@ -24,6 +24,7 @@ APP_ENV и VITE_APP_ENV должны быть ровно production, чтобы 
 В тестовых API и боте задать одинаковые DATABASE_URL отдельной базы, BOT_TOKEN нового бота,
 BOT_USERNAME нового бота и MINI_APP_URL тестового интерфейса.
 PUBLIC_API_URL — адрес тестового API без /api; VITE_API_BASE — его адрес с /api.
+VITE_BOT_USERNAME (сборка интерфейса) — username бота без @ для ссылок «поделиться» и карточки сторис: в тесте test_skincare_bot, в production по умолчанию cosmi_bbot.
 Проверить также API_BASE_URL, используемый фоновым мониторингом скидок: он должен вести на тестовый API.
 Ключ распознавания OPENAI_API_KEY задаётся отдельно при необходимости проверки распознавания.
 В BotFather привязать кнопку тестового бота к HTTPS-адресу тестового интерфейса.
@@ -36,3 +37,17 @@ PUBLIC_API_URL — адрес тестового API без /api; VITE_API_BASE 
 - Проверить production-переменные для API, бота и сборки интерфейса. Пересобрать интерфейс после изменения VITE_*.
 - После выпуска выполнить контрольный сценарий в рабочем боте и проверить события и свойства в Amplitude.
 - Сохранить резервную копию рабочей базы перед применением обновления.
+
+## Развёрнуто 2026-11-01
+
+- Railway project: you-beauty-test, ID e5a64e66-726e-4fbd-991b-769165d6dba2.
+- Ветка всех трёх сервисов приложения: codex/cosmi-star-staging.
+- test-api: https://test-api-production-21ba.up.railway.app
+- test-web: https://test-web-production-f692.up.railway.app
+- test-bot: отдельный процесс `python -m app.bot.main`, бот @test_skincare_bot.
+- Postgres: отдельная база этого проекта. Все четыре сервиса получили статус Online.
+- BOT_TOKEN хранится в test-api; test-bot использует ссылку `${{test-api.BOT_TOKEN}}`.
+- Название окружения Railway production создано по умолчанию, но APP_ENV и VITE_APP_ENV равны staging: аналитика выключена.
+- OPENAI_API_KEY пока не добавлен; распознавание фото требует его в test-api.
+- После /start бот присылает кнопку «Открыть cosmi», ведущую на тестовый интерфейс.
+- Проверено открытие интерфейса вне Telegram. Проверку авторизованного входа и сохранений пользователь выполняет в Telegram.
