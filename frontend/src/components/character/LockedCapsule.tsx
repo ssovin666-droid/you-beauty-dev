@@ -12,8 +12,9 @@ type Props = {
   onClick?: () => void
 }
 
-// Закрытая «капсула» с силуэтом существа. Используется и на главной,
-// и в начале распаковки (там она трясётся и трескается).
+// CSS-капсула — запасной вариант для устройств без WebGL (или
+// помеченных медленными). Основная капсула — 3D в StarScene
+// (режим capsule), её рендерит CosmiStar.
 export function LockedCapsule({ progress, target, ready, shaking, cracked, open, onClick }: Props) {
   const silhouette = useMemo(() => starSvgMarkup('chameleon', null, { silhouette: true, size: 150 }), [])
   const fill = Math.max(0, Math.min(1, progress / target))

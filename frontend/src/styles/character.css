@@ -914,19 +914,6 @@
   padding-bottom: var(--cs-safe-bottom);
 }
 
-.cs-unbox-bg {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 50% 40%, var(--glow), transparent 60%);
-  opacity: 0;
-  transition: opacity 1s ease;
-}
-
-.cs-unbox.phase-reveal .cs-unbox-bg,
-.cs-unbox.phase-plate .cs-unbox-bg {
-  opacity: .35;
-}
-
 .cs-unbox-top {
   position: absolute;
   top: calc(var(--cs-safe-top) + 18px);
@@ -959,72 +946,6 @@
 
 .cs-unbox-star.is-visible {
   opacity: 1;
-}
-
-.cs-unbox-capsule {
-  position: relative;
-  z-index: 2;
-  animation: cs-pop-in .45s cubic-bezier(.3, 1.6, .5, 1) both;
-}
-
-/* Крупная капсула в нативном размере (раньше была scale(1.5) → пиксели). */
-.cs-unbox-capsule .cs-capsule {
-  --cw: min(190px, 46vw);
-}
-
-@keyframes cs-pop-in {
-  from { transform: scale(.4); opacity: 0; }
-  to { transform: none; opacity: 1; }
-}
-
-.cs-unbox-shards {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.cs-shard {
-  position: absolute;
-  width: 90px;
-  height: 120px;
-  background: linear-gradient(160deg, rgba(255, 255, 255, .8), rgba(220, 210, 240, .3));
-  border: 1px solid rgba(255, 255, 255, .8);
-  animation: cs-shard-fly .9s cubic-bezier(.2, .7, .3, 1) forwards;
-}
-
-.cs-shard-l {
-  border-radius: 60px 8px 8px 60px;
-  --dx: -180px;
-  --rot: -60deg;
-}
-
-.cs-shard-r {
-  border-radius: 8px 60px 60px 8px;
-  --dx: 180px;
-  --rot: 70deg;
-}
-
-@keyframes cs-shard-fly {
-  from { transform: translate(0, 0) rotate(0); opacity: 1; }
-  to { transform: translate(var(--dx), 220px) rotate(var(--rot)); opacity: 0; }
-}
-
-.cs-unbox-flash {
-  position: absolute;
-  inset: 0;
-  background: #fff;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .35s ease;
-  z-index: 10;
-}
-
-.cs-unbox-flash.is-on {
-  opacity: 1;
-  transition: opacity .12s ease;
 }
 
 .cs-unbox-plate {
@@ -1062,6 +983,74 @@
 @keyframes cs-plate-up {
   from { transform: translateY(40px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
+}
+
+/* ---------- 3D-капсула (design-reference «Cosmi Capsule») ---------- */
+
+.cs-locked-stage .cosmi-star {
+  position: absolute;
+  inset: 0;
+}
+
+.cosmi-star-capsule-fb {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cosmi-star.is-unbox .cs-capsule {
+  --cw: min(190px, 46vw);
+}
+
+.cosmi-star-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .35s ease;
+}
+
+.cosmi-star-flash.is-on {
+  opacity: .9;
+  transition: opacity .12s ease;
+}
+
+.cs-unbox-pill {
+  display: inline-block;
+  color: var(--cs-ink);
+  background: var(--cs-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  animation: cs-pill-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes cs-pill-pulse {
+  0%, 100% { opacity: .75; }
+  50% { opacity: 1; }
+}
+
+.cs-unbox-cta {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(var(--cs-safe-bottom) + 24px);
+  display: flex;
+  justify-content: center;
+  z-index: 4;
+  animation: cs-plate-up .45s ease both;
+}
+
+.cs-unbox-cta .cs-btn {
+  width: auto;
+  min-width: 220px;
+  padding: 0 28px;
 }
 
 .cs-unbox-skip {

@@ -16,7 +16,6 @@ import { CosmiStar, type CosmiStarHandle } from './CosmiStar'
 import { HowToSheet } from './HowToSheet'
 import { InventorySheet } from './InventorySheet'
 import { ItemReveal } from './ItemReveal'
-import { LockedCapsule } from './LockedCapsule'
 import { QuestCard } from './QuestCard'
 import { SharePanel } from './SharePanel'
 import { UnboxingOverlay } from './UnboxingOverlay'
@@ -180,11 +179,21 @@ export function CharacterHero({ go, refreshToken, shelfCountHint }: Props) {
       <div className="cs-hero" data-theme={theme}>
         <div className="cs-locked">
           <div className="cs-locked-stage">
-            <LockedCapsule
-              progress={shelfCount}
-              target={target}
-              ready={ready}
-              onClick={ready ? () => { trackCharacterEvent('character_unbox_clicked', { source: 'capsule' }); setUnboxing(true) } : undefined}
+            <CosmiStar
+              className="is-capsule"
+              zoom={0.86}
+              archetype={character?.archetype ?? 'chameleon'}
+              accent={character?.accent ?? null}
+              shapeSeed={character?.shape_seed}
+              theme={theme}
+              paused={unboxing || howToOpen}
+              capsule={{ phase: ready ? 'ready' : 'locked', progress: Math.min(1, shelfCount / target) }}
+              onTap={() => {
+                haptic('light')
+                if (!ready) return
+                trackCharacterEvent('character_unbox_clicked', { source: 'capsule' })
+                setUnboxing(true)
+              }}
             />
             <button
               type="button"

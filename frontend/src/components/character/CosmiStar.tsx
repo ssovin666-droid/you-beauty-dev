@@ -23,12 +23,25 @@ import {
 } from '../../lib/character/env'
 import { rasterizeStar, starSvgMarkup } from '../../lib/character/fallback'
 import type { StarScene } from '../../lib/character/scene'
+import { LockedCapsule } from './LockedCapsule'
+
+// Капсула вокруг персонажа (design-reference «Cosmi Capsule»).
+// locked — собирается (progress 0..1), ready — можно открыть,
+// open — запустить открытие (заряд → взрыв → проявление).
+export type CapsuleState = {
+  phase: 'locked' | 'ready' | 'open'
+  progress?: number
+  // Скорость заряда/взрыва (1 — как в референсе).
+  speed?: number
+}
 
 export type CosmiStarHandle = {
   // Кадр персонажа для карточки сторис (2D-копия).
   snapshot: () => Promise<HTMLCanvasElement | null>
   react: () => void
   playIntro: () => void
+  // Пропустить анимацию капсулы — сразу открытый персонаж.
+  skipCapsule: () => void
 }
 
 type Props = {
@@ -48,6 +61,11 @@ type Props = {
   className?: string
   onTap?: () => void
   onFirstDrag?: () => void
+  // Режим капсулы задаётся при монтировании (наличие пропа),
+  // дальше меняется только phase/progress.
+  capsule?: CapsuleState | null
+  onCapsuleBurst?: () => void
+  onCapsuleRevealed?: () => void
 }
 
 // Если кадр в среднем дольше — переключаемся на картинку.
@@ -69,13 +87,26 @@ export const CosmiStar = forwardRef<CosmiStarHandle, Props>(function CosmiStar(
     className,
     onTap,
     onFirstDrag,
+    capsule,
+    onCapsuleBurst,
+    onCapsuleRevealed,
   },
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<StarScene | null>(null)
-  const callbacks = useRef({ onTap, onFirstDrag })
-  callbacks.current = { onTap, onFirstDrag }
+  const callbacks = useRef({ onTap, onFirstDrag, onCapsuleBurst, onCapsuleRevealed })
+  callbacks.current = { onTap, onFirstDrag, onCapsuleBurst, onCapsuleRevealed }
+  const capsuleMode = useRef(Boolean(capsule)).current
+  // Капсула раскрыта (персонаж виден) — общий флаг для 3D и картинки.
+  const [revealed, setRevealed] = useState(false)
+  const revealedRef = useRef(false)
+  const markRevealed = () => {
+    if (revealedRef.current) return
+    revealedRef.current = true
+    setRevealed(true)
+    callbacks.current.onCapsuleRevealed?.()
+  }
 
   const [fallback, setFallback] = useState(
     () => webglSupport() !== 'ok' || isDeviceMarkedSlow(),
@@ -95,8 +126,8 @@ export const CosmiStar = forwardRef<CosmiStarHandle, Props>(function CosmiStar(
   )
 
   // Актуальные пропсы для мгновенной настройки только что созданной сцены.
-  const latest = useRef({ archetype, accent, evolution, particles, equipped, theme })
-  latest.current = { archetype, accent, evolution, particles, equipped, theme }
+  const latest = useRef({ archetype, accent, evolution, particles, equipped, theme, capsule })
+  latest.current = { archetype, accent, evolution, particles, equipped, theme, capsule }
 
   // --- создание сцены (three.js грузится отдельным чанком)
   useEffect(() => {
@@ -120,6 +151,9 @@ export const CosmiStar = forwardRef<CosmiStarHandle, Props>(function CosmiStar(
           cameraY,
           onTap: () => callbacks.current.onTap?.(),
           onFirstDrag: () => callbacks.current.onFirstDrag?.(),
+          capsule: capsuleMode && !revealedRef.current,
+          onCapsuleBurst: () => callbacks.current.onCapsuleBurst?.(),
+          onCapsuleRevealed: markRevealed,
           onPerfSample: avg => {
             if (avg > SLOW_FRAME_MS) {
               markDeviceSlow()
@@ -135,6 +169,11 @@ export const CosmiStar = forwardRef<CosmiStarHandle, Props>(function CosmiStar(
         scene.setLook(now.archetype, now.accent, Boolean(now.equipped?.aura))
         scene.setShelf(now.particles)
         scene.setEquipped(now.equipped ?? {}, true)
+        if (now.capsule && !revealedRef.current) {
+          scene.setCapsuleSpeed(now.capsule.speed ?? 1)
+          scene.setCapsule(now.capsule.phase === 'locked' ? 'locked' : 'ready', now.capsule.progress ?? 0)
+          if (now.capsule.phase === 'open') scene.openCapsule()
+        }
         sceneRef.current = scene
         setSceneVersion(v => v + 1)
       })
@@ -189,6 +228,34 @@ export const CosmiStar = forwardRef<CosmiStarHandle, Props>(function CosmiStar(
     sceneRef.current?.setEquipped(equipped ?? {})
   }, [sceneVersion, equipped])
 
+  // --- капсула: фаза и прогресс
+  const capPhase = capsule?.phase
+  const capProgress = capsule?.progress ?? 0
+  const capSpeed = capsule?.speed ?? 1
+  useEffect(() => {
+    const scene = sceneRef.current
+    if (!scene || !capPhase || revealedRef.current) return
+    scene.setCapsuleSpeed(capSpeed)
+    if (capPhase === 'open') scene.openCapsule()
+    else scene.setCapsule(capPhase, capProgress)
+  }, [sceneVersion, capPhase, capProgress, capSpeed])
+
+  // --- капсула без WebGL: CSS-капсула трясётся → трескается → вспышка
+  const [fbStage, setFbStage] = useState<'idle' | 'shake' | 'crack' | 'flash'>('idle')
+  useEffect(() => {
+    if (!fallback || !capsuleMode || capPhase !== 'open' || revealedRef.current) return
+    const k = 1 / Math.max(0.3, capSpeed)
+    const timers = [
+      window.setTimeout(() => setFbStage('shake'), 0),
+      window.setTimeout(() => setFbStage('crack'), 900 * k),
+      window.setTimeout(() => { setFbStage('flash'); callbacks.current.onCapsuleBurst?.() }, 1400 * k),
+      window.setTimeout(() => markRevealed(), 1650 * k),
+      window.setTimeout(() => setFbStage('idle'), 2000 * k),
+    ]
+    return () => timers.forEach(window.clearTimeout)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fallback, capPhase, capSpeed])
+
   useImperativeHandle(
     ref,
     () => ({
@@ -211,6 +278,14 @@ export const CosmiStar = forwardRef<CosmiStarHandle, Props>(function CosmiStar(
       },
       react: () => sceneRef.current?.react(),
       playIntro: () => sceneRef.current?.playIntro(),
+      skipCapsule: () => {
+        if (!capsuleMode || revealedRef.current) return
+        if (sceneRef.current) sceneRef.current.skipCapsule()
+        else {
+          setFbStage('idle')
+          markRevealed()
+        }
+      },
     }),
     [archetype, accent, shapeSeed],
   )
@@ -219,6 +294,7 @@ export const CosmiStar = forwardRef<CosmiStarHandle, Props>(function CosmiStar(
     () => (fallback ? starSvgMarkup(archetype, accent, { seed: shapeSeed }) : ''),
     [fallback, archetype, accent, shapeSeed],
   )
+  const showFallbackCapsule = fallback && capsuleMode && !revealed
 
   return (
     <div
@@ -227,7 +303,20 @@ export const CosmiStar = forwardRef<CosmiStarHandle, Props>(function CosmiStar(
       style={{ background: STAGE_COLORS[theme] }}
       data-ready={ready || fallback ? 'true' : 'false'}
     >
-      {fallback && (
+      {showFallbackCapsule && (
+        <div className="cosmi-star-capsule-fb">
+          <LockedCapsule
+            progress={capPhase === 'locked' ? capProgress : 1}
+            target={1}
+            ready={capPhase !== 'locked'}
+            shaking={fbStage === 'shake' || fbStage === 'crack'}
+            cracked={fbStage === 'crack' || fbStage === 'flash'}
+            onClick={() => callbacks.current.onTap?.()}
+          />
+        </div>
+      )}
+      {capsuleMode && fallback && <div className={`cosmi-star-flash ${fbStage === 'flash' ? 'is-on' : ''}`} />}
+      {fallback && !showFallbackCapsule && (
         <button
           type="button"
           className="cosmi-star-fallback"

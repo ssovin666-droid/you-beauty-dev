@@ -7,7 +7,7 @@
 | --- | --- |
 | character_progress_viewed | Первый показ блока за его монтирование: status, shelf_count, shelf_target, archetype, quest |
 | character_unbox_clicked | Нажатие кнопки или капсулы: source=button/capsule |
-| character_unbox_started | Начало раскрытия в анимации; бывает автоматически, без клика: archetype |
+| character_unbox_started | Старт открытия капсулы в полноэкранной распаковке (оверлей может открыться автоматически, но капсулу открывает пользователь): archetype, trigger=tap/button/skip |
 | character_unboxed | Сервер впервые сохранил unboxed_at: archetype |
 | character_unbox_failed | Запрос распаковки завершился ошибкой |
 | item_received | Клиент показал ранее выданную награду: reward_id, kind, rarity, item_code, source. Это показ награды, а не момент выдачи в БД |
