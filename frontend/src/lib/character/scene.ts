@@ -39,6 +39,38 @@ export type StarSceneOptions = {
   // Средняя длительность кадра за первые ~2 c (мс).
   onPerfSample?: (avgFrameMs: number) => void
   onContextLost?: () => void
+  // Режим капсулы (design-reference «Cosmi Capsule»): персонаж
+  // тёмным силуэтом внутри перламутровой капсулы, открытие —
+  // заряд → взрыв половинок → конфетти → проявление персонажа.
+  capsule?: boolean
+  // Половинки капсулы разлетелись (вспышка) — момент для хаптика.
+  onCapsuleBurst?: () => void
+  // Персонаж проявился и открыл глаза — можно показывать плашку типа.
+  onCapsuleRevealed?: () => void
+}
+
+export type CapsulePhase = 'locked' | 'ready'
+
+type CapPhase = 'none' | 'locked' | 'ready' | 'charge' | 'burst' | 'done'
+
+type Confetti = {
+  mesh: THREE.Mesh
+  vel: THREE.Vector3
+  spin: THREE.Vector3
+  size: number
+  life: number
+  max: number
+}
+
+const CAPSULE_R = 1.62
+const CAPSULE_H = 0.3
+const CHARGE_SEC = 1.25
+const STAR_IN_CAPSULE = 0.66
+
+const springOut = (x: number) => (x <= 0 ? 0 : 1 - Math.exp(-5.5 * x) * Math.cos(11 * x))
+const sstep = (a: number, b: number, x: number) => {
+  const u = Math.max(0, Math.min(1, (x - a) / (b - a)))
+  return u * u * (3 - 2 * u)
 }
 
 type LookState = {
@@ -253,6 +285,41 @@ export class StarScene {
   private cham = new THREE.Color('#d9c8ff')
   private cheekPink = new THREE.Color('#ff7fb3')
 
+  // лицо целиком — прячем, пока персонаж внутри капсулы
+  private faceParts: THREE.Object3D[] = []
+  private camZ = BASE_Z
+
+  // капсула
+  private capPhase: CapPhase = 'none'
+  private capPt = 0
+  private capHop = 0
+  private capProgress = 0
+  private capSpeed = 1
+  private capSpinY = 0
+  private capZ = 1
+  private capGlowMix = 0
+  private capRevealSent = false
+  private cap = new THREE.Group()
+  private capTop = new THREE.Group()
+  private capBot = new THREE.Group()
+  private capTopMat!: THREE.MeshPhysicalMaterial
+  private capSeamMat!: THREE.MeshPhysicalMaterial
+  private capLight!: THREE.PointLight
+  private capSparks: THREE.Mesh[] = []
+  private capGlow!: THREE.Sprite
+  private raysMat!: THREE.ShaderMaterial
+  private rays!: THREE.Mesh
+  private flashMat!: THREE.MeshBasicMaterial
+  private confGeo: THREE.BufferGeometry[] = []
+  private confetti: Confetti[] = []
+  private topV = new THREE.Vector3()
+  private botV = new THREE.Vector3()
+  private topSpin = new THREE.Vector3()
+  private botSpin = new THREE.Vector3()
+  private capDark = new THREE.Color('#2a2430')
+  private capLavender = new THREE.Color('#e6dcf7')
+  private glowMixColor = new THREE.Color()
+
   constructor(host: HTMLElement, opts: StarSceneOptions = {}) {
     this.host = host
     this.opts = opts
@@ -292,10 +359,17 @@ export class StarScene {
     this.root.add(this.burstGroup)
     this.star.add(this.pGroup)
     this.scene.add(this.auraGroup)
+    // камера в сцене — к ней прикреплена плоскость вспышки
+    this.scene.add(this.camera)
+
+    if (opts.capsule) {
+      this.buildCapsule()
+      this.capPhase = 'locked'
+    }
 
     this.canvas.addEventListener('webglcontextlost', this.handleContextLost)
 
-    if (opts.interactive) {
+    if (opts.interactive || opts.capsule) {
       this.canvas.addEventListener('pointerdown', this.onDown)
       this.canvas.addEventListener('pointermove', this.onDrag)
       this.canvas.addEventListener('pointerup', this.onUp)
@@ -542,6 +616,7 @@ export class StarScene {
       )
       g.add(lid)
       this.star.add(g)
+      this.faceParts.push(g)
       return { g, iris, lid }
     })
 
@@ -551,6 +626,7 @@ export class StarScene {
       m.position.set(sd * 0.31, 0.43, this.surfZ(sd * 0.31, 0.43) + 0.005)
       m.userData.sd = sd
       this.star.add(m)
+      this.faceParts.push(m)
       return m
     })
 
@@ -564,6 +640,7 @@ export class StarScene {
     this.fang = new THREE.Mesh(new THREE.ConeGeometry(0.026, 0.065, 14), white)
     this.fang.rotation.z = Math.PI
     this.star.add(this.fang)
+    this.faceParts.push(this.mouth, this.fang)
 
     this.cheekMat = new THREE.MeshBasicMaterial({ color: '#ff6fa6', transparent: true, opacity: 0.5, depthWrite: false })
     ;[-1, 1].forEach(sd => {
@@ -572,6 +649,7 @@ export class StarScene {
       m.rotation.y = sd * 0.3
       m.scale.set(1.15, 0.8, 1)
       this.star.add(m)
+      this.faceParts.push(m)
     })
   }
 
@@ -990,6 +1068,393 @@ export class StarScene {
     }
   }
 
+  // Перенос design-reference/character/Cosmi Capsule.dc.html:
+  // перламутровая капсула из двух полусфер, шов-кольцо с защёлкой,
+  // свет внутри, искры, лучи и спрайт свечения, вспышка, конфетти.
+  private buildCapsule() {
+    const C = (h: string) => new THREE.Color(h)
+    const R = CAPSULE_R
+    const H = CAPSULE_H
+
+    // Лучи за капсулой (видны после открытия).
+    this.raysMat = new THREE.ShaderMaterial({
+      uniforms: { uT: { value: 0 }, uA: { value: 0 }, uC: { value: new THREE.Vector3(1, 1, 1) } },
+      vertexShader:
+        'varying vec2 vU; void main(){ vU=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+      fragmentShader:
+        'uniform float uT; uniform float uA; uniform vec3 uC; varying vec2 vU;' +
+        'void main(){ vec2 p=vU-0.5; float r=length(p); float a=atan(p.y,p.x);' +
+        'float ry=pow(0.5+0.5*sin(a*9.0+uT*0.5),7.0)*0.8+pow(0.5+0.5*sin(a*14.0-uT*0.35),10.0)*0.5;' +
+        'float f=smoothstep(0.5,0.08,r); float core=exp(-r*r*30.0)*0.9;' +
+        'float v=clamp((ry*f+core)*uA,0.0,1.0); gl_FragColor=vec4(uC,v); }',
+      transparent: true,
+      depthWrite: false,
+      toneMapped: false,
+    })
+    this.rays = new THREE.Mesh(new THREE.PlaneGeometry(11, 11), this.raysMat)
+    this.rays.position.set(0, 0.1, -2.2)
+    this.rays.visible = false
+    this.scene.add(this.rays)
+
+    // Профиль полусферы с цилиндрическим пояском у шва.
+    const prof = (dir: number) => {
+      const p = [new THREE.Vector2(R, 0), new THREE.Vector2(R, H * dir)]
+      for (let i = 1; i <= 32; i++) {
+        const a = (i / 32) * (Math.PI / 2)
+        p.push(new THREE.Vector2(Math.max(0.0001, Math.cos(a) * R), (H + Math.sin(a) * R) * dir))
+      }
+      return p
+    }
+
+    this.capTopMat = new THREE.MeshPhysicalMaterial({
+      color: '#ffffff', transmission: 1, roughness: 0.32, thickness: 0.45, ior: 1.25,
+      clearcoat: 1, clearcoatRoughness: 0.04,
+      iridescence: 0.9, iridescenceIOR: 1.3, iridescenceThicknessRange: [150, 460],
+      side: THREE.DoubleSide, attenuationColor: C('#f4ecff'), attenuationDistance: 5, specularIntensity: 1,
+    })
+    const botMat = new THREE.MeshPhysicalMaterial({
+      color: '#ebe3f5', roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.06,
+      iridescence: 1, iridescenceIOR: 1.6, iridescenceThicknessRange: [260, 720],
+      sheen: 1, sheenColor: C('#ffd0ea'), sheenRoughness: 0.4, side: THREE.DoubleSide,
+    })
+    this.capTop.add(new THREE.Mesh(new THREE.LatheGeometry(prof(1), 96), this.capTopMat))
+    this.capBot.add(new THREE.Mesh(new THREE.LatheGeometry(prof(-1), 96), botMat))
+
+    this.capSeamMat = new THREE.MeshPhysicalMaterial({
+      color: '#ffffff', metalness: 0.5, roughness: 0.14, clearcoat: 1,
+      emissive: C('#ffd6ea'), emissiveIntensity: 0.1,
+    })
+    const seam = new THREE.Mesh(new THREE.TorusGeometry(R + 0.01, 0.055, 18, 128), this.capSeamMat)
+    seam.rotation.x = Math.PI / 2
+    this.capBot.add(seam)
+    const latch = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.22, 6, 16), this.capSeamMat)
+    latch.rotation.z = Math.PI / 2
+    latch.position.set(0, 0, R + 0.07)
+    this.capBot.add(latch)
+
+    this.cap.add(this.capTop, this.capBot)
+    this.root.add(this.cap)
+
+    this.capLight = new THREE.PointLight(0xffd0ec, 0, 6)
+    this.capLight.position.set(0, 0.1, 0.3)
+    this.root.add(this.capLight)
+
+    const sparkMat = new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false, transparent: true })
+    const sparkGeo = new THREE.OctahedronGeometry(0.035)
+    for (let k = 0; k < 18; k++) {
+      const m = new THREE.Mesh(sparkGeo, sparkMat)
+      m.userData = {
+        a: Math.random() * Math.PI * 2,
+        r: 1.05 + Math.random() * 0.35,
+        y: 0.15 + Math.random() * 1.1,
+        sp: 0.3 + Math.random() * 0.5,
+        ph: Math.random() * Math.PI * 2,
+      }
+      m.visible = false
+      this.cap.add(m)
+      this.capSparks.push(m)
+    }
+
+    // Мягкое свечение из капсулы.
+    const gcv = document.createElement('canvas')
+    gcv.width = gcv.height = 128
+    const gc = gcv.getContext('2d')
+    if (gc) {
+      const grd = gc.createRadialGradient(64, 64, 0, 64, 64, 64)
+      grd.addColorStop(0, 'rgba(255,255,255,1)')
+      grd.addColorStop(0.35, 'rgba(255,240,250,.55)')
+      grd.addColorStop(1, 'rgba(255,255,255,0)')
+      gc.fillStyle = grd
+      gc.fillRect(0, 0, 128, 128)
+    }
+    const glowTex = new THREE.CanvasTexture(gcv)
+    this.textures.push(glowTex)
+    this.capGlow = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: glowTex, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }),
+    )
+    this.capGlow.position.set(0, 0, 0.6)
+    this.root.add(this.capGlow)
+
+    // Вспышка на весь кадр — плоскость прямо перед камерой.
+    this.flashMat = new THREE.MeshBasicMaterial({
+      color: '#ffffff', transparent: true, opacity: 0, depthTest: false, depthWrite: false, toneMapped: false,
+    })
+    const flash = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), this.flashMat)
+    flash.position.z = -1
+    flash.renderOrder = 999
+    this.camera.add(flash)
+
+    this.confGeo = [
+      new THREE.DodecahedronGeometry(0.06),
+      new THREE.CylinderGeometry(0.07, 0.07, 0.012, 6),
+      new THREE.SphereGeometry(0.05, 12, 10),
+      new THREE.OctahedronGeometry(0.065),
+      new THREE.TorusGeometry(0.05, 0.018, 8, 16),
+    ]
+  }
+
+  private burstConfetti() {
+    const T = ARCHETYPES[this.lastType ?? 'chameleon']
+    const pal =
+      this.lastType === 'chameleon'
+        ? ['#ff5236', '#ffb3cc', '#b7a2ff', '#9fe3ff', '#f2c75c']
+        : [T.body, T.accent, T.glowCol]
+    pal.push('#ffffff', '#f6c453')
+    for (let i = 0; i < 90; i++) {
+      const gi = Math.floor(Math.random() * this.confGeo.length)
+      const col = new THREE.Color(pal[i % pal.length])
+      const mat =
+        gi === 1 || gi === 3
+          ? new THREE.MeshStandardMaterial({ color: col, metalness: 1, roughness: 0.15, emissive: col, emissiveIntensity: 0.35 })
+          : new THREE.MeshPhysicalMaterial({ color: col, roughness: 0.15, clearcoat: 1, emissive: col, emissiveIntensity: 0.15 })
+      const mesh = new THREE.Mesh(this.confGeo[gi], mat)
+      const d = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize()
+      mesh.position.copy(d).multiplyScalar(0.4)
+      const vel = d.multiplyScalar(3.5 + Math.random() * 5)
+      vel.y += 2.2
+      vel.z = Math.abs(vel.z) * 0.6 + 1
+      mesh.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6)
+      mesh.scale.setScalar(0.001)
+      this.root.add(mesh)
+      this.confetti.push({
+        mesh,
+        vel,
+        spin: new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(14),
+        size: 0.7 + Math.random() * 0.8,
+        life: 0,
+        max: 2 + Math.random() * 1.2,
+      })
+    }
+  }
+
+  private clearConfetti() {
+    this.confetti.forEach(c => {
+      this.root.remove(c.mesh)
+      ;(c.mesh.material as THREE.Material).dispose()
+    })
+    this.confetti.length = 0
+  }
+
+  private startBurst() {
+    this.capPhase = 'burst'
+    this.capPt = 0
+    this.capRevealSent = false
+    this.topV.set(0.8 + Math.random() * 0.6, 6.5, 2.5)
+    this.topSpin.set(2.4, 1, -3.2)
+    this.botV.set(-0.6 - Math.random() * 0.6, -5.5, 2)
+    this.botSpin.set(-2, -0.6, 2.6)
+    this.capSparks.forEach(m => { m.visible = false })
+    this.burstConfetti()
+    this.spawnBurst()
+    const T = ARCHETYPES[this.lastType ?? 'chameleon']
+    const rc = new THREE.Color(T.glowCol).lerp(this.white, 0.55)
+    this.raysMat.uniforms.uC.value.set(rc.r, rc.g, rc.b)
+    this.rays.visible = true
+    this.opts.onCapsuleBurst?.()
+  }
+
+  private finishCapsule() {
+    this.capPhase = 'done'
+    this.capPt = 0
+    this.canvas.style.cursor = this.opts.interactive ? 'grab' : 'default'
+    this.cap.visible = false
+    this.capGlow.material.opacity = 0
+    this.capLight.intensity = 0
+    this.flashMat.opacity = 0
+    this.capZ = 1
+    this.rotY = 0
+    this.rotX = 0
+    this.bodyMat.color.copy(this.white)
+    this.faceParts.forEach(o => { o.visible = true })
+    this.pGroup.visible = true
+    this.pGroup.scale.setScalar(1)
+    this.auraGroup.visible = true
+    this.camera.position.z = this.camZ
+    if (!this.capRevealSent) {
+      this.capRevealSent = true
+      this.opts.onCapsuleRevealed?.()
+    }
+  }
+
+  // Капсула: всё, что поверх обычного кадра персонажа.
+  private capsuleFrame(dt: number, t: number, k: number) {
+    const ph = this.capPhase
+    if (ph === 'none') return
+
+    const { cur, bodyMat } = this
+    const tx = this.gcx
+    const ty = this.gcy
+
+    // лучи — общие для всех фаз
+    this.raysMat.uniforms.uT.value = t
+    this.rays.rotation.z = t * 0.05
+
+    // конфетти
+    for (let i = this.confetti.length - 1; i >= 0; i--) {
+      const c = this.confetti[i]
+      c.life += dt
+      c.vel.y -= 5.5 * dt
+      c.vel.multiplyScalar(1 - dt * 1.1)
+      c.mesh.position.addScaledVector(c.vel, dt)
+      c.mesh.rotation.x += c.spin.x * dt
+      c.mesh.rotation.y += c.spin.y * dt
+      c.mesh.rotation.z += c.spin.z * dt
+      const s = c.size * Math.min(1, c.life * 8) * (1 - sstep(c.max - 0.6, c.max, c.life))
+      c.mesh.scale.setScalar(Math.max(0.001, s))
+      if (c.life > c.max) {
+        this.root.remove(c.mesh)
+        ;(c.mesh.material as THREE.Material).dispose()
+        this.confetti.splice(i, 1)
+      }
+    }
+
+    // фон: нейтральное лавандовое свечение → цвет персонажа
+    const glowTarget = ph === 'burst' || ph === 'done' ? 1 : 0
+    this.capGlowMix += (glowTarget - this.capGlowMix) * k
+    if (this.capGlowMix < 0.999) {
+      this.glowMixColor.copy(this.capLavender).lerp(cur.glowCol, this.capGlowMix)
+      this.glowMixColor.getRGB(this.srgb, THREE.SRGBColorSpace)
+      this.bgMat.uniforms.uGlow.value.set(this.srgb.r, this.srgb.g, this.srgb.b)
+      const amt = this.bgMat.uniforms.uAmt.value as number
+      this.bgMat.uniforms.uAmt.value = 0.45 + (amt - 0.45) * this.capGlowMix
+    }
+
+    if (ph === 'done') {
+      const u = this.raysMat.uniforms.uA
+      u.value += (0.42 - u.value) * k
+      this.camera.position.z = this.camZ
+      return
+    }
+
+    const cdt = ph === 'charge' || ph === 'burst' ? dt * this.capSpeed : dt
+    this.capPt += cdt
+    const pt = this.capPt
+    this.capHop *= Math.exp(-dt * 3.5)
+    const hp = Math.sin(t * 18) * 0.07 * this.capHop
+
+    let mix = 0
+    let flash = 0
+    let faceOn = false
+    let eyeOpen = 1
+    let starScale = STAR_IN_CAPSULE
+    const cap = this.cap
+
+    if (ph === 'locked' || ph === 'ready') {
+      const ready = ph === 'ready'
+      const cyc = t % 2.8
+      const wig = ready && cyc < 0.7 ? Math.sin(cyc * 34) * 0.07 * (1 - cyc / 0.7) : 0
+      cap.position.set(0, 0, 0)
+      cap.rotation.set(-ty * 0.12 + 0.05, tx * 0.35 + Math.sin(t * 0.6) * 0.1, wig + hp * 0.6 + Math.sin(t * 0.8) * 0.03)
+      cap.scale.set(1 - hp * 0.5, 1 + hp, 1 - hp * 0.5)
+      this.capTopMat.roughness += ((ready ? 0.2 : 0.36 - this.capProgress * 0.1) - this.capTopMat.roughness) * k
+      this.capSeamMat.emissiveIntensity = ready
+        ? 0.5 + (Math.sin(t * 3.2) * 0.5 + 0.5) * 1.1
+        : 0.08 + this.capProgress * 0.35
+      this.capLight.intensity += ((ready ? 6 : this.capProgress * 2.4) - this.capLight.intensity) * k
+      this.capSpinY = cap.rotation.y + t * 0.5
+      this.star.rotation.set(cap.rotation.x, this.capSpinY, cap.rotation.z)
+      starScale = STAR_IN_CAPSULE * (1 + hp * 0.3)
+      this.capSparks.forEach(m => {
+        const u = m.userData as { a: number; r: number; y: number; sp: number; ph: number }
+        m.visible = ready
+        if (!ready) return
+        const a = u.a + t * u.sp
+        m.position.set(Math.cos(a) * u.r, u.y * 0.9, Math.sin(a) * u.r)
+        m.scale.setScalar(0.5 + Math.max(0, Math.sin(t * 4 + u.ph)) * 1.2)
+        m.rotation.y = t * 2
+      })
+      this.capZ = 1
+    } else if (ph === 'charge') {
+      const c = Math.min(1, pt / CHARGE_SEC)
+      const sh = c * c
+      cap.position.set((Math.random() - 0.5) * 0.14 * sh, (Math.random() - 0.5) * 0.06 * sh, 0)
+      cap.rotation.z = Math.sin(t * 52) * 0.11 * sh
+      cap.rotation.y += (0 - cap.rotation.y) * k * 2
+      cap.rotation.x += (0 - cap.rotation.x) * k * 2
+      cap.scale.set(1 + 0.05 * sh, 1 - 0.06 * sh, 1 + 0.05 * sh)
+      this.capTop.position.y = sh * 0.05
+      this.capSeamMat.emissiveIntensity = 1 + sh * 5
+      this.capLight.intensity = 6 + sh * 50
+      this.capGlow.material.opacity = sh * 0.7
+      this.capGlow.scale.setScalar(1.5 + sh * 2.5)
+      this.capSpinY += cdt * (1 + sh * 10)
+      this.star.rotation.set(cap.rotation.x, this.capSpinY, 0)
+      this.capZ = 1 - sh * 0.06
+      this.capSparks.forEach(m => {
+        const u = m.userData as { a: number; r: number; y: number; sp: number }
+        const a = u.a + t * u.sp * (1 + sh * 6)
+        const r = u.r * (1 - sh * 0.5)
+        m.position.set(Math.cos(a) * r, u.y * 0.9 * (1 - sh * 0.6), Math.sin(a) * r)
+      })
+      if (pt >= CHARGE_SEC) this.startBurst()
+    } else if (ph === 'burst') {
+      flash = Math.max(0, 1 - pt / 0.55)
+      const up = Math.min(1, pt / 1.1)
+      const halves: [THREE.Group, THREE.Vector3, THREE.Vector3][] = [
+        [this.capTop, this.topV, this.topSpin],
+        [this.capBot, this.botV, this.botSpin],
+      ]
+      halves.forEach(([g, v, s]) => {
+        if (!g.visible) return
+        v.y -= 6 * cdt * (v.y > 0 ? 1 : -1) * 0.3
+        g.position.addScaledVector(v, cdt)
+        g.rotation.x += s.x * cdt
+        g.rotation.y += s.y * cdt
+        g.rotation.z += s.z * cdt
+        g.scale.setScalar(Math.max(0.001, 1 - up * 0.5))
+        if (pt > 1.2) g.visible = false
+      })
+      cap.position.multiplyScalar(0.8)
+      cap.rotation.z *= 0.8
+      cap.scale.lerp(new THREE.Vector3(1, 1, 1), Math.min(1, k * 3))
+      this.capLight.intensity = Math.max(0, 56 * (1 - pt / 0.6))
+      this.capGlow.material.opacity = Math.max(0, 0.9 * (1 - pt / 0.8))
+      this.capGlow.scale.setScalar(4 + pt * 9)
+      this.raysMat.uniforms.uA.value = pt < 0.15 ? pt / 0.15 : Math.max(0.45, 1 - (pt - 0.15) * 0.5)
+      this.capZ += (1.02 - this.capZ) * k * 2
+
+      mix = sstep(0.02, 0.6, pt)
+      starScale = STAR_IN_CAPSULE + (1 - STAR_IN_CAPSULE) * springOut(pt * 0.9)
+      const spin = 1 - Math.pow(1 - Math.min(1, pt / 1.3), 3)
+      this.star.rotation.set(0, (1 - spin) * -Math.PI * 2 + tx * 0.3, Math.sin(pt * 10) * 0.08 * (1 - spin))
+      faceOn = pt > 0.5
+      eyeOpen = Math.max(0.04, springOut((pt - 0.5) * 1.2))
+
+      if (pt > 1.5 && !this.capRevealSent) {
+        this.capRevealSent = true
+        this.opts.onCapsuleRevealed?.()
+      }
+      if (pt > 1.8) {
+        this.finishCapsule()
+        return
+      }
+    }
+
+    // Персонаж-силуэт: тёмный, матовый, без лица → проявление.
+    bodyMat.color.copy(this.capDark).lerp(this.white, mix)
+    // До взрыва тело непрозрачное (transmission 0): иначе three.js не
+    // рисует его в проход, который видно сквозь стеклянную крышку.
+    bodyMat.transmission = mix > 0.001 ? cur.tr * mix : 0
+    bodyMat.roughness = 0.45 + (cur.rough - 0.45) * mix
+    bodyMat.iridescence = cur.irid * mix
+    bodyMat.sheen = cur.sheen * mix
+    bodyMat.emissiveIntensity = cur.em * mix + (1 - mix) * 0.6 * flash
+
+    const sq = Math.sin(t * 16) * 0.09 * this.squash
+    this.star.scale.set(starScale * (1 - sq * 0.6), starScale * (1 + sq), starScale * (1 - sq * 0.6))
+
+    this.faceParts.forEach(o => { o.visible = faceOn })
+    if (faceOn) this.eyes.forEach(e => { e.g.scale.y = cur.eye * eyeOpen })
+    this.pGroup.visible = mix > 0.05
+    this.pGroup.scale.setScalar(Math.max(0.001, mix))
+    this.auraGroup.visible = mix > 0.9
+    Object.values(this.acc).forEach(a => { if (!faceOn) a.g.visible = false })
+    this.satellites.forEach(m => { if (mix < 0.5) m.visible = false })
+
+    this.flashMat.opacity = flash * flash * 0.85
+    this.camera.position.z = this.camZ * this.capZ
+  }
+
   // -------------------------
   // PUBLIC API
   // -------------------------
@@ -1098,6 +1563,53 @@ export class StarScene {
     this.spawnBurst()
   }
 
+  // --- капсула
+
+  // Закрыта (progress 0..1 — сколько собрано) или готова к открытию.
+  setCapsule(phase: CapsulePhase, progress = 0) {
+    if (this.capPhase === 'none') return
+    this.capProgress = Math.max(0, Math.min(1, progress))
+    const before = this.capPhase
+    if (before !== 'locked' && before !== 'ready') return
+    if (before === 'locked' && phase === 'ready') this.capHop = 1.4
+    this.capPhase = phase
+    this.canvas.style.cursor = phase === 'ready' ? 'pointer' : 'default'
+    this.refreshIdle()
+  }
+
+  setCapsuleSpeed(speed: number) {
+    this.capSpeed = Math.max(0.3, Math.min(3, speed))
+  }
+
+  // Подпрыгнуть (тап по закрытой капсуле).
+  hopCapsule() {
+    this.capHop = 1
+  }
+
+  // Заряд → взрыв → проявление. Идемпотентно.
+  openCapsule() {
+    if (this.capPhase !== 'locked' && this.capPhase !== 'ready') return
+    this.capPhase = 'charge'
+    this.capPt = 0
+  }
+
+  // Пропустить анимацию: сразу открытый персонаж.
+  skipCapsule() {
+    if (this.capPhase === 'none' || this.capPhase === 'done') return
+    this.clearConfetti()
+    this.raysMat.uniforms.uA.value = 0.42
+    this.rays.visible = true
+    const T = ARCHETYPES[this.lastType ?? 'chameleon']
+    const rc = new THREE.Color(T.glowCol).lerp(this.white, 0.55)
+    this.raysMat.uniforms.uC.value.set(rc.r, rc.g, rc.b)
+    this.finishCapsule()
+    this.playIntro()
+  }
+
+  get capsuleOpened() {
+    return this.capPhase === 'burst' || this.capPhase === 'done'
+  }
+
   setActive(active: boolean) {
     if (this.disposed) return
     if (active && !this.running) {
@@ -1138,6 +1650,8 @@ export class StarScene {
       }
     })
     Object.values(this.particleGeo).forEach(g => geos.add(g))
+    this.confGeo.forEach(g => geos.add(g))
+    if (this.capGlow) this.capGlow.material.dispose()
     geos.forEach(g => g.dispose())
     this.textures.forEach(t => t.dispose())
     mats.forEach(m => m.dispose())
@@ -1163,7 +1677,8 @@ export class StarScene {
     if (!w || !h) return
     this.renderer.setSize(w, h, false)
     this.camera.aspect = w / h
-    this.camera.position.z = BASE_Z * this.zoom * Math.max(1, 0.82 / this.camera.aspect)
+    this.camZ = BASE_Z * this.zoom * Math.max(1, 0.82 / this.camera.aspect)
+    this.camera.position.z = this.camZ * (this.capPhase === 'none' || this.capPhase === 'done' ? 1 : this.capZ)
     this.camera.updateProjectionMatrix()
     if (!this.running) this.safeRender()
   }
@@ -1175,11 +1690,17 @@ export class StarScene {
     this.downAt = performance.now()
     this.velX = this.velY = 0
     this.canvas.setPointerCapture(e.pointerId)
-    this.canvas.style.cursor = 'grabbing'
+    if (this.opts.interactive && !this.capsuleBusy) this.canvas.style.cursor = 'grabbing'
+  }
+
+  // Капсула ещё закрыта/открывается — крутить нельзя, только тап.
+  private get capsuleBusy() {
+    return this.capPhase !== 'none' && this.capPhase !== 'done'
   }
 
   private onDrag = (e: PointerEvent) => {
-    if (!this.dragging) return
+    if (!this.dragging || this.capsuleBusy) return
+    if (!this.opts.interactive) return
     const dx = e.clientX - this.lastX
     const dy = e.clientY - this.lastY
     this.lastX = e.clientX
@@ -1198,9 +1719,23 @@ export class StarScene {
   private onUp = (e: PointerEvent) => {
     if (!this.dragging) return
     this.dragging = false
-    this.canvas.style.cursor = 'grab'
     const moved = Math.hypot(e.clientX - this.downX, e.clientY - this.downY)
-    if (moved < 6 && performance.now() - this.downAt < 350) {
+    const held = performance.now() - this.downAt
+    const isTap = this.capsuleBusy ? moved < 8 && held < 400 : moved < 6 && held < 350
+    if (this.capsuleBusy) {
+      this.canvas.style.cursor = this.capPhase === 'ready' ? 'pointer' : 'default'
+      if (isTap && (this.capPhase === 'locked' || this.capPhase === 'ready')) {
+        this.hopCapsule()
+        this.opts.onTap?.()
+      }
+      return
+    }
+    this.canvas.style.cursor = this.opts.interactive ? 'grab' : 'default'
+    if (!this.opts.interactive) {
+      if (isTap) this.opts.onTap?.()
+      return
+    }
+    if (isTap) {
       this.react()
       this.opts.onTap?.()
     }
@@ -1298,14 +1833,20 @@ export class StarScene {
       this.colorsDirty = false
     }
 
-    bodyMat.transmission = cur.tr
-    bodyMat.roughness = cur.rough
-    bodyMat.iridescence = cur.irid
-    bodyMat.sheen = cur.sheen
+    // Пока персонаж в капсуле, материал ведёт capsuleFrame: двойная
+    // запись 0 ↔ >0 в transmission/iridescence/sheen меняла бы version
+    // материала каждый кадр (пересборка программы).
+    const inCapsule = this.capsuleBusy
+    if (!inCapsule) {
+      bodyMat.transmission = cur.tr
+      bodyMat.roughness = cur.rough
+      bodyMat.iridescence = cur.irid
+      bodyMat.sheen = cur.sheen
+    }
     bodyMat.sheenColor.copy(cur.accent).lerp(this.violet, cur.purple)
     this.emColor.copy(cur.body).lerp(cur.accent, 0.45).lerp(this.white, cur.rainbow * 0.5)
     bodyMat.emissive.copy(this.emColor)
-    bodyMat.emissiveIntensity = (cur.em + cur.evo * 0.03) * (1 + Math.sin(t * 1.6) * 0.12)
+    if (!inCapsule) bodyMat.emissiveIntensity = (cur.em + cur.evo * 0.03) * (1 + Math.sin(t * 1.6) * 0.12)
     bodyMat.attenuationColor.copy(cur.body).lerp(this.white, 0.35)
 
     this.tmpColor.copy(cur.body).lerp(this.cham, cur.rainbow).multiplyScalar(0.9)
@@ -1494,6 +2035,8 @@ export class StarScene {
       mat.color.copy(cur.accent).lerp(this.white, 0.3)
       mat.emissive.copy(cur.glowCol)
     })
+
+    this.capsuleFrame(dt, t, k)
 
     this.safeRender()
   }

@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@500;600;700&display=swap" rel="stylesheet">
+<style>html,body{margin:0;height:100%;}body{font-family:Manrope,system-ui,sans-serif;-webkit-font-smoothing:antialiased;}a{color:inherit;}a:hover{opacity:.7;}button{font:inherit;}@keyframes cardIn{from{opacity:0;transform:translateY(14px) scale(.98);}to{opacity:1;transform:none;}}@keyframes pulse{0%,100%{opacity:.75;}50%{opacity:1;}}</style>
+</helmet>
+<div style="{{ themeVars }}">
+<div style="min-height:100vh; box-sizing:border-box; background:var(--bg,#f4f2ef); color:var(--ink,#17151a); display:flex; flex-direction:column; gap:14px; padding:14px 18px 18px;">
+  <header style="display:flex; align-items:center; gap:12px;">
+    <div style="font-family:Unbounded,sans-serif; font-weight:600; font-size:20px; letter-spacing:-0.03em;">cosmi</div>
+    <div style="font-size:13px; font-weight:600; color:var(--mute,#77727c);">капсула</div>
+    <div style="flex:1;"></div>
+    <button onClick="{{ resetAll }}" style="height:36px; padding:0 14px; border-radius:999px; border:1px solid var(--line,rgba(0,0,0,.1)); background:transparent; color:var(--ink,#17151a); font-size:13px; font-weight:600; cursor:pointer;">Сбросить</button>
+  </header>
+
+  <section style="flex:1; position:relative; min-height:560px; height:calc(100vh - 96px); border-radius:28px; overflow:hidden; background:var(--stage,#ebe6e1);">
+    <div ref="{{ stageRef }}" style="position:absolute; inset:0;"></div>
+    <div ref="{{ flashRef }}" style="position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none;"></div>
+
+    <sc-if value="{{ isReady }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute; top:18px; left:0; right:0; display:flex; justify-content:center; pointer-events:none;">
+        <div style="font-size:12px; font-weight:600; color:var(--ink,#17151a); background:var(--glass,rgba(255,255,255,.6)); backdrop-filter:blur(12px); padding:7px 12px; border-radius:999px; animation:pulse 1.6s ease-in-out infinite;">нажми на капсулу</div>
+      </div>
+    </sc-if>
+
+    <div style="position:absolute; left:16px; right:16px; bottom:16px; display:flex; justify-content:center; pointer-events:none;">
+      <sc-if value="{{ isLocked }}" hint-placeholder-val="{{ true }}">
+        <div style="pointer-events:auto; width:100%; max-width:440px; box-sizing:border-box; background:var(--glass,rgba(255,255,255,.6)); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); border-radius:22px; padding:18px 20px; display:flex; flex-direction:column; gap:10px; animation:cardIn .45s ease both;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+            <span style="font-size:12px; font-weight:600; color:var(--mute,#77727c);">первое задание</span>
+            <span style="font-size:12px; font-weight:700; font-variant-numeric:tabular-nums;">{{ scanLabel }}</span>
+          </div>
+          <div style="font-family:Unbounded,sans-serif; font-weight:600; font-size:24px; letter-spacing:-0.03em; line-height:1.1;">Отсканируй 3 продукта</div>
+          <div style="font-size:14px; line-height:1.4; color:var(--mute,#77727c); text-wrap:pretty;">Внутри капсулы твой первый персонаж. Задание выполнено — капсула открывается.</div>
+          <div style="display:flex; gap:4px; height:6px; margin:2px 0 4px;">
+            <sc-for list="{{ segs }}" as="s" hint-placeholder-count="3">
+              <div style="{{ s.style }}"></div>
+            </sc-for>
+          </div>
+          <button onClick="{{ scan }}" style="height:50px; border-radius:999px; border:none; background:var(--ink,#17151a); color:var(--bg,#f4f2ef); font-weight:700; font-size:15px; cursor:pointer;">Сканировать продукт</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isReady }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ open }}" style="pointer-events:auto; height:52px; padding:0 28px; border-radius:999px; border:none; background:var(--ink,#17151a); color:var(--bg,#f4f2ef); font-weight:700; font-size:15px; cursor:pointer; animation:cardIn .45s ease both;">Открыть капсулу</button>
+      </sc-if>
+
+      <sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+        <div style="pointer-events:auto; width:100%; max-width:440px; box-sizing:border-box; background:var(--glass,rgba(255,255,255,.6)); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); border-radius:22px; padding:18px 20px; display:flex; flex-direction:column; gap:8px; animation:cardIn .6s cubic-bezier(.2,.9,.3,1.2) both;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:12px; font-weight:600; color:var(--mute,#77727c);">твой первый персонаж</span>
+            <sc-if value="{{ isRare }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:11px; font-weight:800; padding:3px 8px; border-radius:999px; color:#17151a; background:linear-gradient(90deg,#ffd36b,#ff8fc0,#9fd8ff);">редкий тип</span>
+            </sc-if>
+          </div>
+          <div style="font-family:Unbounded,sans-serif; font-weight:600; font-size:30px; letter-spacing:-0.03em; line-height:1.05;">{{ typeName }}</div>
+          <div style="font-size:15px; line-height:1.35; text-wrap:pretty;">{{ typeCaption }}</div>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <button onClick="{{ claim }}" style="flex:1; height:50px; border-radius:999px; border:none; background:var(--ink,#17151a); color:var(--bg,#f4f2ef); font-weight:700; font-size:15px; cursor:pointer;">Забрать на полку</button>
+            <button onClick="{{ replay }}" style="height:50px; padding:0 18px; border-radius:999px; border:1px solid var(--line,rgba(0,0,0,.1)); background:transparent; color:var(--ink,#17151a); font-weight:600; font-size:14px; cursor:pointer;">Ещё раз</button>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;creature&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;random&quot;,&quot;bold&quot;,&quot;goth&quot;,&quot;clean&quot;,&quot;coquette&quot;,&quot;glow&quot;,&quot;disco&quot;,&quot;chameleon&quot;],&quot;default&quot;:&quot;random&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light'|'dark'&quot;},&quot;speed&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:0.4,&quot;max&quot;:1.6,&quot;step&quot;:0.1,&quot;default&quot;:1,&quot;tsType&quot;:&quot;number&quot;},&quot;skipTask&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const TYPES = {
+  bold: { name: 'Bold', cap: 'красная помада — это не про губы, это про власть', body: '#ff5240', accent: '#ff2a4d', glowCol: '#ff7a5c', tr: .82, rough: .07, em: .14, irid: 0, sheen: 0, mouth: .45, eye: 1, pal: ['#e3202f', '#ff5236', '#ff2f7a', '#ff7b1c'] },
+  goth: { name: 'Гот', cap: 'чёрная подводка — это не макияж, это позиция', body: '#221d29', accent: '#9b5cff', glowCol: '#8a4dff', tr: .62, rough: .1, em: .03, irid: .45, sheen: 1, mouth: .1, eye: 1, pal: ['#1a161e', '#4a0f22', '#2c1f40', '#9b5cff'] },
+  clean: { name: 'Clean girl', cap: 'выгляжу так, будто сплю по восемь часов. не сплю', body: '#f7d5c2', accent: '#e9a07a', glowCol: '#ffc9a8', tr: .55, rough: .26, em: .1, irid: 0, sheen: .3, mouth: .42, eye: .98, pal: ['#e9bfa1', '#d69c7a', '#f2d4bf', '#c48766'] },
+  coquette: { name: 'Coquette', cap: 'бантик — это не аксессуар, это мировоззрение', body: '#ffbcd5', accent: '#ff6fa6', glowCol: '#ff9cc4', tr: .8, rough: .09, em: .12, irid: .15, sheen: .4, mouth: .62, eye: 1.1, pal: ['#ffb3cc', '#f79cc2', '#ffd0e0', '#e1b4ff'] },
+  glow: { name: 'Glow', cap: 'не потная, а сияющая. разница принципиальная', body: '#f2f9ff', accent: '#9ff2ff', glowCol: '#c9f6ff', tr: 1, rough: .03, em: .42, irid: .12, sheen: 0, mouth: .4, eye: 1.02, pal: ['#eaf7ff', '#fff3df', '#ddf7ee', '#f1eaff'] },
+  disco: { name: 'Disco', cap: 'если меня не видно из космоса — зачем вообще краситься', body: '#d8cfff', accent: '#ffd36b', glowCol: '#b99cff', tr: .88, rough: .05, em: .16, irid: 1, sheen: 0, mouth: .72, eye: 1.08, pal: ['#dcdce8', '#f2c75c', '#b7a2ff', '#9fe3ff'] },
+  chameleon: { name: 'Хамелеон', cap: 'у меня нет стиля. у меня их все', body: '#ffffff', accent: '#ffffff', glowCol: '#c7b3ff', tr: .85, rough: .06, em: .14, irid: .7, sheen: 0, mouth: .5, eye: 1.04, rare: true, pal: ['#ff5236', '#ffb3cc', '#b7a2ff', '#9fe3ff', '#f2c75c'] },
+};
+const THEMES = {
+  light: { bg: '#f4f2ef', stage: '#ebe6e1', ink: '#17151a', mute: '#77727c', line: 'rgba(23,21,26,.1)', chip: '#ece9e5', glass: 'rgba(255,255,255,.62)' },
+  dark: { bg: '#111013', stage: '#1a181d', ink: '#f3f1f4', mute: '#8f8a95', line: 'rgba(255,255,255,.12)', chip: '#262329', glass: 'rgba(30,28,33,.62)' },
+};
+const NEED = 3;
+
+class Component extends DCLogic {
+  state = { phase: 'locked', scans: 0, type: null };
+
+  stageRef = (el) => { this.stageEl = el; if (el && !this._started) { this._started = true; this.initScene(); } };
+  flashRef = (el) => { this.flashEl = el; };
+  theme() { return this.props.theme || 'light'; }
+  pickType() {
+    const c = this.props.creature || 'random';
+    if (c !== 'random') return c;
+    if (Math.random() < .12) return 'chameleon';
+    const k = ['bold', 'goth', 'clean', 'coquette', 'glow', 'disco']; return k[Math.floor(Math.random() * k.length)];
+  }
+  componentDidMount() { this.setState({ type: this.pickType(), phase: this.props.skipTask ? 'ready' : 'locked', scans: this.props.skipTask ? NEED : 0 }); }
+  componentDidUpdate() { this.sync(); }
+  componentWillUnmount() { this._dead = true; if (this.S) this.S.dispose(); }
+  sync() {
+    const S = this.S; if (!S || !this.state.type) return;
+    if (S.type !== this.state.type) S.reset(this.state.type);
+    S.setPhase(this.state.phase);
+    S.setTheme(THEMES[this.theme()].stage);
+    S.speed = this.props.speed ?? 1;
+  }
+  restart(ready) {
+    const type = this.pickType();
+    if (this.S) this.S.type = null;
+    this.setState({ type, phase: ready ? 'ready' : 'locked', scans: ready ? NEED : 0 });
+  }
+
+  async initScene() {
+    let THREE;
+    try { THREE = await import('https://unpkg.com/three@0.160.0/build/three.module.js'); } catch (e) { console.error(e); return; }
+    if (this._dead || !this.stageEl) return;
+    const host = this.stageEl;
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.domElement.style.cssText = 'width:100%;height:100%;display:block;touch-action:none;';
+    host.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(30, 1, .1, 100);
+    const BASEZ = 10.6; let zMul = 1; camera.position.set(0, -.35, BASEZ);
+
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const env = new THREE.Scene(); env.background = new THREE.Color(0x2a2830);
+    const panel = (w, h, p, int, col) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(col || 0xffffff).multiplyScalar(int), side: THREE.DoubleSide })); m.position.set(p[0], p[1], p[2]); m.lookAt(0, 0, 0); env.add(m); };
+    panel(8, 3, [0, 7, 3], 5); panel(2.5, 9, [-7, 1, 4], 3.2); panel(2.5, 9, [7, 0, 3], 2.4, 0xfff0f6); panel(10, 3, [0, -6, 1], 1, 0xe6eeff); panel(6, 6, [0, 3, -8], 1.6);
+    scene.environment = pmrem.fromScene(env, .03).texture;
+    const key = new THREE.DirectionalLight(0xffffff, 1.2); key.position.set(-2, 3, 5); scene.add(key);
+
+    const C = (h) => new THREE.Color(h);
+    const bgMat = new THREE.ShaderMaterial({
+      uniforms: { uBg: { value: new THREE.Vector3(.92, .9, .88) }, uGlow: { value: new THREE.Vector3(1, 1, 1) }, uAmt: { value: .5 } },
+      vertexShader: 'varying vec2 vP; void main(){ vP=position.xy; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+      fragmentShader: 'uniform vec3 uBg; uniform vec3 uGlow; uniform float uAmt; varying vec2 vP; float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);} void main(){ vec2 p=vP-vec2(0.0,0.2); float g=exp(-dot(p,p)/(2.0*1.6*1.6)); vec3 c=mix(uBg,uGlow,clamp(g*uAmt,0.0,1.0)); c+=(h(gl_FragCoord.xy)-0.5)/255.0; gl_FragColor=vec4(c,1.0); }',
+      depthWrite: false, toneMapped: false,
+    });
+    const bg = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), bgMat); bg.position.z = -5; scene.add(bg);
+
+    const raysMat = new THREE.ShaderMaterial({
+      uniforms: { uT: { value: 0 }, uA: { value: 0 }, uC: { value: new THREE.Vector3(1, 1, 1) } },
+      vertexShader: 'varying vec2 vU; void main(){ vU=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+      fragmentShader: 'uniform float uT; uniform float uA; uniform vec3 uC; varying vec2 vU; void main(){ vec2 p=vU-0.5; float r=length(p); float a=atan(p.y,p.x); float ry=pow(0.5+0.5*sin(a*9.0+uT*0.5),7.0)*0.8+pow(0.5+0.5*sin(a*14.0-uT*0.35),10.0)*0.5; float f=smoothstep(0.5,0.08,r); float core=exp(-r*r*30.0)*0.9; float v=clamp((ry*f+core)*uA,0.0,1.0); gl_FragColor=vec4(uC,v); }',
+      transparent: true, depthWrite: false, toneMapped: false,
+    });
+    const raysM = new THREE.Mesh(new THREE.PlaneGeometry(11, 11), raysMat); raysM.position.set(0, .1, -2.2); scene.add(raysM);
+
+    const root = new THREE.Group(); scene.add(root);
+    const holder = new THREE.Group(); root.add(holder);
+
+    // capsule
+    const cap = new THREE.Group(); root.add(cap);
+    const R = 1.62, H = .3;
+    const prof = (dir) => { const p = [new THREE.Vector2(R, 0), new THREE.Vector2(R, H * dir)]; for (let i = 1; i <= 32; i++) { const a = i / 32 * Math.PI / 2; p.push(new THREE.Vector2(Math.max(.0001, Math.cos(a) * R), (H + Math.sin(a) * R) * dir)); } return p; };
+    const topMat = new THREE.MeshPhysicalMaterial({ color: '#ffffff', transmission: 1, roughness: .32, thickness: .45, ior: 1.25, clearcoat: 1, clearcoatRoughness: .04, iridescence: .9, iridescenceIOR: 1.3, iridescenceThicknessRange: [150, 460], side: THREE.DoubleSide, attenuationColor: C('#f4ecff'), attenuationDistance: 5, specularIntensity: 1 });
+    const botMat = new THREE.MeshPhysicalMaterial({ color: '#ebe3f5', roughness: .2, clearcoat: 1, clearcoatRoughness: .06, iridescence: 1, iridescenceIOR: 1.6, iridescenceThicknessRange: [260, 720], sheen: 1, sheenColor: C('#ffd0ea'), sheenRoughness: .4, side: THREE.DoubleSide });
+    const top = new THREE.Group(), bot = new THREE.Group(); cap.add(top, bot);
+    top.add(new THREE.Mesh(new THREE.LatheGeometry(prof(1), 96), topMat));
+    bot.add(new THREE.Mesh(new THREE.LatheGeometry(prof(-1), 96), botMat));
+    const seamMat = new THREE.MeshPhysicalMaterial({ color: '#ffffff', metalness: .5, roughness: .14, clearcoat: 1, emissive: C('#ffd6ea'), emissiveIntensity: .1 });
+    const seam = new THREE.Mesh(new THREE.TorusGeometry(R + .01, .055, 18, 128), seamMat); seam.rotation.x = Math.PI / 2; bot.add(seam);
+    const latch = new THREE.Mesh(new THREE.CapsuleGeometry(.06, .22, 6, 16), seamMat); latch.rotation.z = Math.PI / 2; latch.position.set(0, 0, R + .07); bot.add(latch);
+    const inLight = new THREE.PointLight(0xffd0ec, 0, 6); inLight.position.set(0, .1, .3); root.add(inLight);
+    const sparkMat = new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false, transparent: true });
+    const sparks = []; for (let k = 0; k < 18; k++) { const m = new THREE.Mesh(new THREE.OctahedronGeometry(.035), sparkMat); m.userData = { a: Math.random() * 6.28, r: 1.05 + Math.random() * .35, y: .15 + Math.random() * 1.1, sp: .3 + Math.random() * .5, ph: Math.random() * 6.28 }; cap.add(m); sparks.push(m); }
+    const gcv = document.createElement('canvas'); gcv.width = gcv.height = 128; const gc = gcv.getContext('2d'); const grd = gc.createRadialGradient(64, 64, 0, 64, 64, 64); grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(.35, 'rgba(255,240,250,.55)'); grd.addColorStop(1, 'rgba(255,255,255,0)'); gc.fillStyle = grd; gc.fillRect(0, 0, 128, 128);
+    const glowSpr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(gcv), transparent: true, opacity: 0, depthWrite: false, toneMapped: false })); glowSpr.position.set(0, 0, .6); root.add(glowSpr);
+
+    // star
+    let ST = null;
+    const makeStar = (typeKey) => {
+      const T = TYPES[typeKey];
+      const star = new THREE.Group();
+      const geo = new THREE.SphereGeometry(1, 128, 128);
+      const pos = geo.attributes.position, N = pos.count, tipF = new Float32Array(N);
+      const RN = [5, 5, 6, 7, 8, 8][Math.floor(Math.random() * 6)], SP = 2 * Math.PI / RN;
+      const rays = [], A0 = Math.PI / 2 + (Math.random() - .5) * .14;
+      for (let k = 0; k < RN; k++) { const alt = RN === 8 && k % 2 === 1; rays.push({ a: A0 + k * SP + (k ? (Math.random() - .5) * SP * .26 : 0), L: k === 0 ? .72 + Math.random() * .1 : alt ? .34 + Math.random() * .18 : .5 + Math.random() * .36, w: SP * (alt ? .4 : .52) * (.85 + Math.random() * .3) }); }
+      const WOB = Math.random() * 6.28;
+      const starR = (th) => { let best = 0, bf = 0; for (const r of rays) { const d = Math.abs(Math.atan2(Math.sin(th - r.a), Math.cos(th - r.a))) / r.w; if (d < 1) { const g = Math.pow(Math.cos(d * Math.PI / 2), 2.4); if (r.L * g > best) { best = r.L * g; bf = g; } } } return { f: bf, s: .96 + .025 * Math.sin(3 * th + WOB) + best }; };
+      const cols = new Float32Array(N * 3), tc = new THREE.Color(), B = C(T.body), A = C(T.accent);
+      for (let i = 0; i < N; i++) {
+        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), rho = Math.hypot(x, y), th = Math.atan2(y, x);
+        const { f, s } = starR(th);
+        pos.setXYZ(i, x * s, y * s, z * (.68 - .18 * f * rho));
+        tipF[i] = Math.min(1, Math.pow(f, 4) * Math.pow(rho, 3) * 1.1);
+        if (typeKey === 'chameleon') tc.setHSL(((th / (2 * Math.PI) + .5) + y * .12 + z * .1 + 1) % 1, .85, .66); else tc.copy(B).lerp(A, tipF[i]);
+        cols[i * 3] = tc.r; cols[i * 3 + 1] = tc.g; cols[i * 3 + 2] = tc.b;
+      }
+      geo.computeVertexNormals();
+      const nrm = geo.attributes.normal, nmap = new Map();
+      for (let i = 0; i < N; i++) { const k = Math.round(pos.getX(i) * 1e4) + ',' + Math.round(pos.getY(i) * 1e4) + ',' + Math.round(pos.getZ(i) * 1e4); let a = nmap.get(k); if (!a) { a = [0, 0, 0, []]; nmap.set(k, a); } a[0] += nrm.getX(i); a[1] += nrm.getY(i); a[2] += nrm.getZ(i); a[3].push(i); }
+      nmap.forEach(a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; a[3].forEach(i => nrm.setXYZ(i, a[0] / l, a[1] / l, a[2] / l)); });
+      geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+      const mat = new THREE.MeshPhysicalMaterial({ vertexColors: true, color: C('#2a2430'), transmission: 0, thickness: 1.3, roughness: .45, ior: 1.4, clearcoat: 1, clearcoatRoughness: .05, iridescence: 0, iridescenceIOR: 1.5, iridescenceThicknessRange: [200, 600], sheen: 0, sheenColor: C(typeKey === 'goth' ? '#9b5cff' : T.accent), sheenRoughness: .35, emissive: C(T.body).lerp(C(T.accent), .45).lerp(C('#ffffff'), typeKey === 'chameleon' ? .5 : 0), emissiveIntensity: 0, attenuationColor: C(T.body).lerp(C('#ffffff'), .35), attenuationDistance: 3 });
+      const body = new THREE.Mesh(geo, mat); star.add(body); star.updateMatrixWorld(true);
+      const rc = new THREE.Raycaster();
+      const surfZ = (x, y) => { rc.set(new THREE.Vector3(x, y, 5), new THREE.Vector3(0, 0, -1)); const h = rc.intersectObject(body, false); return h.length ? h[0].point.z : .5; };
+      const face = new THREE.Group(); star.add(face);
+      const inkMat = new THREE.MeshPhysicalMaterial({ color: '#1a1320', roughness: .25, clearcoat: 1 });
+      const whiteMat = new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: .25, clearcoat: 1 });
+      const hlMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+      const eyes = [-1, 1].map(sd => {
+        const g = new THREE.Group(); g.position.set(sd * .31, .12, surfZ(sd * .31, .12) - .04);
+        g.add(new THREE.Mesh(new THREE.SphereGeometry(.2, 32, 24), whiteMat));
+        const iris = new THREE.Group(); const ir = new THREE.Mesh(new THREE.SphereGeometry(.152, 32, 24), inkMat); ir.position.z = .07; iris.add(ir); g.add(iris);
+        const h1 = new THREE.Mesh(new THREE.SphereGeometry(.04, 16, 12), hlMat); h1.position.set(-.05, .065, .225);
+        const h2 = new THREE.Mesh(new THREE.SphereGeometry(.018, 12, 8), hlMat); h2.position.set(.06, -.05, .215); g.add(h1, h2);
+        face.add(g); return { g, iris };
+      });
+      const mz = surfZ(.03, -.2);
+      const mouth = new THREE.Group(); mouth.position.set(.03, -.2, mz + .008); face.add(mouth);
+      const arc = new THREE.Mesh(new THREE.TorusGeometry(.075, .019, 8, 28, Math.PI), inkMat); arc.rotation.z = Math.PI; mouth.add(arc);
+      mouth.scale.set(1, .12 + T.mouth * .9, 1);
+      const cheekMat = new THREE.MeshBasicMaterial({ color: typeKey === 'chameleon' ? '#ff7fb3' : T.accent, transparent: true, opacity: .45, depthWrite: false });
+      [-1, 1].forEach(sd => { const m = new THREE.Mesh(new THREE.CircleGeometry(.085, 28), cheekMat); m.position.set(sd * .5, -.1, surfZ(sd * .5, -.1) + .012); m.rotation.y = sd * .3; m.scale.set(1.15, .8, 1); face.add(m); });
+      face.visible = false;
+      return { T, key: typeKey, star, mat, face, eyes };
+    };
+    const disposeTree = (o) => o.traverse(n => { if (n.geometry) n.geometry.dispose(); if (n.material) n.material.dispose(); });
+
+    // confetti
+    const confGeo = [new THREE.DodecahedronGeometry(.06), new THREE.CylinderGeometry(.07, .07, .012, 6), new THREE.SphereGeometry(.05, 12, 10), new THREE.OctahedronGeometry(.065), new THREE.TorusGeometry(.05, .018, 8, 16)];
+    const conf = [];
+    const burstConfetti = (T) => {
+      const pal = T.pal.concat(['#ffffff', '#f6c453']);
+      for (let i = 0; i < 90; i++) {
+        const gi = Math.floor(Math.random() * confGeo.length), col = C(pal[i % pal.length]);
+        const mat = gi === 1 || gi === 3 ? new THREE.MeshStandardMaterial({ color: col, metalness: 1, roughness: .15, emissive: col, emissiveIntensity: .35 }) : new THREE.MeshPhysicalMaterial({ color: col, roughness: .15, clearcoat: 1, emissive: col, emissiveIntensity: .15 });
+        const m = new THREE.Mesh(confGeo[gi], mat);
+        const d = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize();
+        m.position.copy(d).multiplyScalar(.4);
+        const v = d.multiplyScalar(3.5 + Math.random() * 5); v.y += 2.2; v.z = Math.abs(v.z) * .6 + 1;
+        m.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+        root.add(m);
+        conf.push({ m, v, spin: new THREE.Vector3(Math.random() - .5, Math.random() - .5, Math.random() - .5).multiplyScalar(14), size: .7 + Math.random() * .8, life: 0, max: 2 + Math.random() * 1.2 });
+      }
+    };
+    const clearConf = () => { conf.forEach(c => { root.remove(c.m); c.m.material.dispose(); }); conf.length = 0; };
+
+    // state
+    let phase = 'locked', pt = 0, hop = 0, revealCb = false;
+    const theme = { bg: C('#ebe6e1') }, glowCur = C('#e6dcf7'), glowTgt = C('#e6dcf7');
+    const topV = new THREE.Vector3(), botV = new THREE.Vector3(), topSpin = new THREE.Vector3(), botSpin = new THREE.Vector3();
+    const dark = C('#2a2430'), white = C('#ffffff');
+    const resetCapsule = () => {
+      [top, bot].forEach(g => { g.position.set(0, 0, 0); g.rotation.set(0, 0, 0); g.scale.setScalar(1); g.visible = true; });
+      cap.position.set(0, 0, 0); cap.rotation.set(0, 0, 0); cap.scale.setScalar(1); cap.visible = true;
+      glowSpr.material.opacity = 0; raysMat.uniforms.uA.value = 0; inLight.intensity = 0; zMul = 1;
+    };
+    const S = this.S = {
+      type: null, speed: 1,
+      reset(typeKey) {
+        if (ST) { holder.remove(ST.star); disposeTree(ST.star); }
+        ST = makeStar(typeKey); holder.add(ST.star); holder.scale.setScalar(.66); holder.rotation.set(0, 0, 0);
+        S.type = typeKey; clearConf(); resetCapsule(); glowTgt.set('#e6dcf7'); phase = null;
+      },
+      setPhase(p) {
+        if (p === 'opening') { if (phase === 'ready') { phase = 'charge'; pt = 0; } return; }
+        if (p === 'done') return;
+        if (p !== phase) { if (phase === 'locked' && p === 'ready') hop = 1.4; phase = p; pt = 0; }
+      },
+      hop() { hop = 1; },
+      setTheme(hex) { theme.bg.set(hex); },
+      dispose() { cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('pointermove', onMove); renderer.dispose(); },
+    };
+
+    let gx = 0, gy = 0, tx = 0, ty = 0, downX = 0, downY = 0, downAt = 0;
+    const cv = renderer.domElement;
+    const onMove = e => { const r = host.getBoundingClientRect(); gx = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (r.width / 2))); gy = Math.max(-1, Math.min(1, -(e.clientY - (r.top + r.height * .45)) / (r.height / 2))); cv.style.cursor = phase === 'ready' ? 'pointer' : 'default'; };
+    window.addEventListener('pointermove', onMove);
+    cv.addEventListener('pointerdown', e => { downX = e.clientX; downY = e.clientY; downAt = performance.now(); });
+    cv.addEventListener('pointerup', e => {
+      if (Math.hypot(e.clientX - downX, e.clientY - downY) > 8 || performance.now() - downAt > 400) return;
+      if (phase === 'ready') this.setState({ phase: 'opening' }); else if (phase === 'locked' || phase === 'done') hop = 1;
+    });
+    const ro = new ResizeObserver(() => { const w = host.clientWidth, h = host.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); });
+    ro.observe(host);
+
+    const spring = (x) => x <= 0 ? 0 : 1 - Math.exp(-5.5 * x) * Math.cos(11 * x);
+    const sstep = (a, b, x) => { const u = Math.max(0, Math.min(1, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
+    const clock = new THREE.Clock(); let t = 0, raf = 0, nextBlink = 3, blinkAt = -10;
+    const srgb = new THREE.Color();
+    const CHARGE = 1.25;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const dt0 = Math.min(clock.getDelta(), .05), dt = dt0 * (phase === 'charge' || phase === 'burst' ? S.speed : 1); t += dt0; pt += dt;
+      const k = 1 - Math.exp(-dt0 * 3);
+      tx += (gx - tx) * k; ty += (gy - ty) * k;
+      hop *= Math.exp(-dt0 * 3.5);
+      const hp = Math.sin(t * 18) * .07 * hop;
+      root.position.y = Math.sin(t * 1.3) * .07;
+      let flash = 0;
+
+      if (ST && (phase === 'locked' || phase === 'ready')) {
+        const ready = phase === 'ready';
+        const cyc = t % 2.8, wig = ready && cyc < .7 ? Math.sin(cyc * 34) * .07 * (1 - cyc / .7) : 0;
+        cap.rotation.set(-ty * .12 + .05, tx * .35 + Math.sin(t * .6) * .1, wig + hp * .6 + Math.sin(t * .8) * .03);
+        cap.scale.set(1 - hp * .5, 1 + hp, 1 - hp * .5);
+        topMat.roughness += ((ready ? .2 : .36) - topMat.roughness) * k;
+        seamMat.emissiveIntensity = ready ? .5 + (Math.sin(t * 3.2) * .5 + .5) * 1.1 : .08;
+        inLight.intensity += ((ready ? 6 : 0) - inLight.intensity) * k;
+        holder.rotation.set(cap.rotation.x, cap.rotation.y + t * .5, cap.rotation.z); holder.scale.setScalar(.66 * (1 + hp * .3));
+        sparks.forEach(m => { const u = m.userData; m.visible = ready; const a = u.a + t * u.sp; m.position.set(Math.cos(a) * u.r, u.y * .9, Math.sin(a) * u.r); m.scale.setScalar(.5 + Math.max(0, Math.sin(t * 4 + u.ph)) * 1.2); m.rotation.y = t * 2; });
+      } else if (ST && phase === 'charge') {
+        const c = Math.min(1, pt / CHARGE), sh = c * c;
+        cap.position.set((Math.random() - .5) * .14 * sh, (Math.random() - .5) * .06 * sh, 0);
+        cap.rotation.z = Math.sin(t * 52) * .11 * sh; cap.rotation.y += (0 - cap.rotation.y) * k * 2; cap.rotation.x += (0 - cap.rotation.x) * k * 2;
+        cap.scale.set(1 + .05 * sh, 1 - .06 * sh, 1 + .05 * sh);
+        top.position.y = sh * .05;
+        seamMat.emissiveIntensity = 1 + sh * 5; inLight.intensity = 6 + sh * 50;
+        glowSpr.material.opacity = sh * .7; glowSpr.scale.setScalar(1.5 + sh * 2.5);
+        holder.rotation.y += dt * (1 + sh * 10); holder.rotation.x = cap.rotation.x;
+        zMul = 1 - sh * .06;
+        sparks.forEach(m => { const u = m.userData; const a = u.a + t * u.sp * (1 + sh * 6); const r = u.r * (1 - sh * .5); m.position.set(Math.cos(a) * r, u.y * .9 * (1 - sh * .6), Math.sin(a) * r); });
+        if (pt >= CHARGE) {
+          phase = 'burst'; pt = 0; revealCb = false;
+          topV.set(.8 + Math.random() * .6, 6.5, 2.5); topSpin.set(2.4, 1, -3.2);
+          botV.set(-.6 - Math.random() * .6, -5.5, 2); botSpin.set(-2, -.6, 2.6);
+          sparks.forEach(m => m.visible = false);
+          burstConfetti(ST.T);
+          const T = ST.T, m = ST.mat;
+          m.transmission = .001; m.iridescence = T.irid; m.sheen = T.sheen; m.needsUpdate = true;
+          glowTgt.set(T.glowCol).lerp(C(T.accent), .35);
+          raysMat.uniforms.uC.value.set(...C(T.glowCol).lerp(white, .55).toArray());
+        }
+      } else if (ST && phase === 'burst') {
+        flash = Math.max(0, 1 - pt / .55);
+        const up = Math.min(1, pt / 1.1);
+        [[top, topV, topSpin], [bot, botV, botSpin]].forEach(([g, v, s]) => {
+          if (!g.visible) return;
+          v.y -= 6 * dt * Math.sign(v.y > 0 ? 1 : -1) * .3; g.position.addScaledVector(v, dt);
+          g.rotation.x += s.x * dt; g.rotation.y += s.y * dt; g.rotation.z += s.z * dt;
+          g.scale.setScalar(Math.max(.001, 1 - up * .5)); if (pt > 1.2) g.visible = false;
+        });
+        cap.position.multiplyScalar(.8); cap.rotation.z *= .8; cap.scale.lerp(new THREE.Vector3(1, 1, 1), k * 3);
+        inLight.intensity = Math.max(0, 56 * (1 - pt / .6));
+        glowSpr.material.opacity = Math.max(0, .9 * (1 - pt / .8)); glowSpr.scale.setScalar(4 + pt * 9);
+        raysMat.uniforms.uA.value = pt < .15 ? pt / .15 : Math.max(.45, 1 - (pt - .15) * .5);
+        zMul += ((1 + .02) - zMul) * k * 2;
+        const T = ST.T, m = ST.mat, mix = sstep(.02, .6, pt);
+        m.color.copy(dark).lerp(white, mix);
+        m.transmission = Math.max(.001, T.tr * mix); m.roughness = .45 + (T.rough - .45) * mix; m.emissiveIntensity = T.em * mix + (1 - mix) * .6 * flash;
+        holder.scale.setScalar(.66 + .34 * spring(pt * .9));
+        const spin = 1 - Math.pow(1 - Math.min(1, pt / 1.3), 3);
+        holder.rotation.set(0, (1 - spin) * -Math.PI * 2 + tx * .3, Math.sin(pt * 10) * .08 * (1 - spin));
+        ST.face.visible = pt > .5;
+        const eo = Math.max(.04, spring((pt - .5) * 1.2));
+        ST.eyes.forEach(e => e.g.scale.set(T.eye, T.eye * eo, .5));
+        if (pt > 1.5 && !revealCb) { revealCb = true; this.setState({ phase: 'done' }); }
+        if (pt > 1.8) { phase = 'done'; pt = 0; }
+      } else if (ST && phase === 'done') {
+        const T = ST.T;
+        raysMat.uniforms.uA.value += (.42 - raysMat.uniforms.uA.value) * k;
+        holder.scale.set(1 - hp * .5, 1 + hp, 1 - hp * .5);
+        holder.rotation.set(-ty * .15 + Math.sin(t * .9) * .04, tx * .4 + Math.sin(t * .7) * .12, Math.sin(t * .8) * .05);
+        ST.mat.emissiveIntensity = T.em * (1 + Math.sin(t * 1.6) * .12);
+        if (t > nextBlink) { blinkAt = t; nextBlink = t + 2.2 + Math.random() * 3; }
+        const bp = (t - blinkAt) / .17, bl = bp >= 0 && bp <= 1 ? Math.sin(bp * Math.PI) : 0;
+        ST.eyes.forEach(e => { e.g.scale.set(T.eye, T.eye * Math.max(.06, 1 - bl), .5); e.iris.position.set(tx * .04, ty * .032, 0); });
+        top.visible = bot.visible = false;
+      }
+      raysMat.uniforms.uT.value = t; raysM.rotation.z = t * .05;
+
+      for (let i = conf.length - 1; i >= 0; i--) {
+        const c = conf[i]; c.life += dt;
+        c.v.y -= 5.5 * dt; c.v.multiplyScalar(1 - dt * 1.1); c.m.position.addScaledVector(c.v, dt);
+        c.m.rotation.x += c.spin.x * dt; c.m.rotation.y += c.spin.y * dt; c.m.rotation.z += c.spin.z * dt;
+        const s = c.size * Math.min(1, c.life * 8) * (1 - sstep(c.max - .6, c.max, c.life)); c.m.scale.setScalar(Math.max(.001, s));
+        if (c.life > c.max) { root.remove(c.m); c.m.material.dispose(); conf.splice(i, 1); }
+      }
+
+      if (this.flashEl) this.flashEl.style.opacity = (flash * flash * .85).toFixed(3);
+      glowCur.lerp(glowTgt, k);
+      theme.bg.getRGB(srgb, THREE.SRGBColorSpace); bgMat.uniforms.uBg.value.set(srgb.r, srgb.g, srgb.b);
+      glowCur.getRGB(srgb, THREE.SRGBColorSpace); bgMat.uniforms.uGlow.value.set(srgb.r, srgb.g, srgb.b);
+      bgMat.uniforms.uAmt.value = phase === 'done' || phase === 'burst' ? .6 : .45;
+      camera.position.z = BASEZ * Math.max(1, .82 / camera.aspect) * zMul;
+      renderer.render(scene, camera);
+    };
+    this.sync();
+    tick();
+  }
+
+  renderVals() {
+    const th = THEMES[this.theme()];
+    const T = TYPES[this.state.type || 'coquette'];
+    const p = this.state.phase;
+    return {
+      themeVars: { '--bg': th.bg, '--stage': th.stage, '--ink': th.ink, '--mute': th.mute, '--line': th.line, '--chip': th.chip, '--glass': th.glass, minHeight: '100vh' },
+      stageRef: this.stageRef, flashRef: this.flashRef,
+      isLocked: p === 'locked', isReady: p === 'ready', isDone: p === 'done',
+      scanLabel: this.state.scans + ' / ' + NEED,
+      segs: Array.from({ length: NEED }, (_, i) => ({ style: { flex: 1, borderRadius: 99, background: i < this.state.scans ? 'var(--ink)' : 'var(--line)', transition: 'background .3s' } })),
+      scan: () => {
+        const n = Math.min(NEED, this.state.scans + 1);
+        if (this.S) this.S.hop();
+        this.setState({ scans: n });
+        if (n >= NEED) setTimeout(() => this.setState({ phase: 'ready' }), 650);
+      },
+      open: () => this.setState({ phase: 'opening' }),
+      isRare: !!T.rare, typeName: T.name, typeCaption: T.cap,
+      claim: () => this.restart(false),
+      replay: () => this.restart(true),
+      resetAll: () => this.restart(!!this.props.skipTask),
+    };
+  }
+}
+</script>
+</body>
+</html>
