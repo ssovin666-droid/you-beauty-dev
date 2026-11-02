@@ -8,6 +8,7 @@ import {
   type InventoryItem,
   type PendingReward,
 } from '../../lib/character/api'
+import { readCachedCharacter, writeCachedCharacter } from '../../lib/character/cache'
 import { ARCHETYPES, pluralItems } from '../../lib/character/config'
 import { useTelegramTheme } from '../../lib/character/env'
 import { getTelegramInitData, haptic } from '../../lib/telegram'
@@ -45,7 +46,11 @@ export function CharacterHero({ go, refreshToken, shelfCountHint }: Props) {
   const theme = useTelegramTheme()
   const starRef = useRef<CosmiStarHandle>(null)
 
-  const [character, setCharacter] = useState<CharacterState | null>(null)
+  // Первый кадр — из кэша устройства (повторный заход), потом — ответ сервера.
+  const [character, setCharacter] = useState<CharacterState | null>(readCachedCharacter)
+  // Есть ли уже свежий ответ сервера. До него не запускаем распаковку,
+  // не показываем награды и не шлём аналитику по данным из кэша.
+  const [fresh, setFresh] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [unboxing, setUnboxing] = useState(false)
   const [howToOpen, setHowToOpen] = useState(false)
@@ -63,6 +68,7 @@ export function CharacterHero({ go, refreshToken, shelfCountHint }: Props) {
     try {
       const next = await characterApi.get()
       setCharacter(next)
+      setFresh(true)
       setError(null)
     } catch (err) {
       console.error(err)
@@ -76,9 +82,14 @@ export function CharacterHero({ go, refreshToken, shelfCountHint }: Props) {
     if (refreshToken > 0) load()
   }, [load, refreshToken])
 
+  // --- кэш последнего состояния для следующего захода
+  useEffect(() => {
+    if (fresh && character) writeCachedCharacter(character)
+  }, [fresh, character])
+
   // --- аналитика: прогресс увидели
   useEffect(() => {
-    if (!character || viewedTracked.current) return
+    if (!fresh || !character || viewedTracked.current) return
     viewedTracked.current = true
     trackCharacterEvent('character_progress_viewed', {
       status: character.status,
@@ -87,16 +98,21 @@ export function CharacterHero({ go, refreshToken, shelfCountHint }: Props) {
       archetype: character.status === 'locked' ? null : character.archetype,
       quest: character.quest.code,
     })
-  }, [character])
+  }, [fresh, character])
 
   // --- 10-й товар: распаковка при открытии главной
   useEffect(() => {
-    if (character?.status === 'ready_to_unbox') setUnboxing(true)
+    if (fresh && character?.status === 'ready_to_unbox') setUnboxing(true)
+  }, [fresh, character?.status])
+
+  // --- капсула готова: заранее подгружаем 3D-чанк распаковки
+  useEffect(() => {
+    if (character?.status === 'ready_to_unbox') import('../../lib/character/scene').catch(() => undefined)
   }, [character?.status])
 
   // --- награды, которые ещё не показывали
   const pending: PendingReward | undefined =
-    character?.status === 'active' && !unboxing
+    fresh && character?.status === 'active' && !unboxing
       ? character.pending_rewards.find(r => !shownRewardIds.includes(r.id))
       : undefined
 
@@ -171,6 +187,18 @@ export function CharacterHero({ go, refreshToken, shelfCountHint }: Props) {
   const overlayOpen = unboxing || Boolean(pending) || shareOpen
 
   // -------------------------
+  // ЗАГРУЗКА (нет ни кэша, ни ответа) — нейтральная заглушка, не капсула
+  // -------------------------
+
+  if (!character && !error && getTelegramInitData()) {
+    return (
+      <div className="cs-hero" data-theme={theme}>
+        <div className="cs-hero-skeleton" aria-busy="true" />
+      </div>
+    )
+  }
+
+  // -------------------------
   // LOCKED / READY
   // -------------------------
 
@@ -184,7 +212,12 @@ export function CharacterHero({ go, refreshToken, shelfCountHint }: Props) {
               progress={shelfCount}
               target={target}
               ready={ready}
-              onClick={ready ? () => { trackCharacterEvent('character_unbox_clicked', { source: 'capsule' }); setUnboxing(true) } : undefined}
+              onClick={() => {
+                haptic('light')
+                if (!ready) return
+                trackCharacterEvent('character_unbox_clicked', { source: 'capsule' })
+                setUnboxing(true)
+              }}
             />
             <button
               type="button"
