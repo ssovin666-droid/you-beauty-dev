@@ -8,6 +8,7 @@ from urllib.parse import parse_qsl
 
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -207,8 +208,25 @@ def get_current_user(
         first_name=telegram_account.first_name,
     )
 
-    db.add(user)
-    db.commit()
+    # Новый пользователь открывает мини-апп — фронт шлёт сразу несколько
+    # запросов (/tracked, /character …), и каждый пытается создать его.
+    # Проигравший гонку получает UniqueViolation: откатываемся и берём
+    # строку, которую уже создал параллельный запрос (раньше — 500).
+    try:
+        db.add(user)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = db.scalar(
+            select(User).where(
+                User.telegram_user_id
+                == telegram_account.telegram_user_id
+            )
+        )
+        if existing is None:
+            raise
+        return existing
+
     db.refresh(user)
 
     return user
