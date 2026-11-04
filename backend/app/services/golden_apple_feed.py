@@ -1,18 +1,34 @@
+import hashlib
+import json
 import os
 import re
 import tempfile
 import unicodedata
 import zipfile
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlparse
 
 import httpx
 import ijson
-from sqlalchemy import select, update
+from sqlalchemy import case, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
-from app.db.session import SessionLocal
-from app.models import Store, StoreCatalogItem
+from app.core.locks import advisory_lock
+from app.core.metrics import JobMetrics, persist_job_run
+from app.db.session import SessionLocal, engine
+from app.models import (
+    CatalogSyncRun,
+    ProductMatchMiss,
+    Store,
+    StoreCatalogItem,
+)
+from app.services.catalog_versions import (
+    STATUS_FAILED,
+    STATUS_NOT_MODIFIED,
+    STATUS_PUBLISHED,
+    STATUS_RUNNING,
+)
 
 
 GOLDEN_APPLE_FEED_URL = (
@@ -24,6 +40,52 @@ STORE_NAME = "Golden Apple"
 STORE_SLUG = "golden-apple"
 
 BATCH_SIZE = 500
+
+# Сколько id исчезнувших товаров отправлять
+# одним UPDATE.
+DISAPPEARED_BATCH_SIZE = 5000
+
+IMPORT_LOCK_NAME = f"catalog_import:{STORE_SLUG}"
+
+# Поля фида. Хеш считается по ним всем,
+# поэтому любое изменение в выгрузке
+# (цена, ссылка, параметры, наличие)
+# приводит к записи строки.
+FEED_FIELDS = (
+    "group_id",
+    "brand_name",
+    "brand_normalized",
+    "name",
+    "name_normalized",
+    "type_prefix",
+    "model",
+    "variant",
+    "size",
+    "barcode",
+    "category_id",
+    "image_url",
+    "product_url",
+    "affiliate_url",
+    "current_price",
+    "old_price",
+    "currency",
+    "available",
+    "raw_params",
+)
+
+# Поля, которые читает сопоставление товаров.
+# Их изменение (или изменение наличия)
+# инвалидирует отрицательный кэш бренда.
+MATCH_FIELDS = (
+    "brand_name",
+    "brand_normalized",
+    "name",
+    "model",
+    "type_prefix",
+    "size",
+    "variant",
+    "available",
+)
 
 
 def normalize_text(
@@ -168,74 +230,6 @@ def get_or_create_store(
     db.refresh(store)
 
     return store
-
-
-def download_feed() -> str:
-    temp_file = tempfile.NamedTemporaryFile(
-        suffix=".zip",
-        delete=False,
-    )
-
-    temp_path = temp_file.name
-    temp_file.close()
-
-    try:
-        with httpx.stream(
-            "GET",
-            GOLDEN_APPLE_FEED_URL,
-            follow_redirects=True,
-            timeout=httpx.Timeout(
-                300.0,
-                connect=30.0,
-            ),
-        ) as response:
-            response.raise_for_status()
-
-            with open(
-                temp_path,
-                "wb",
-            ) as output:
-                for chunk in response.iter_bytes(
-                    chunk_size=1024 * 1024
-                ):
-                    output.write(chunk)
-
-        if not zipfile.is_zipfile(
-            temp_path
-        ):
-            try:
-                with open(
-                    temp_path,
-                    "rb",
-                ) as source:
-                    message = (
-                        source
-                        .read(500)
-                        .decode(
-                            "utf-8",
-                            errors="ignore",
-                        )
-                    )
-            except Exception:
-                message = ""
-
-            raise RuntimeError(
-                "Golden Apple feed "
-                "is not a valid ZIP. "
-                f"Response: {message}"
-            )
-
-        return temp_path
-
-    except Exception:
-        if os.path.exists(
-            temp_path
-        ):
-            os.remove(
-                temp_path
-            )
-
-        raise
 
 
 def prepare_row(
@@ -391,10 +385,205 @@ def deduplicate_rows(
     )
 
 
-def upsert_batch(
+
+
+def _json_default(value):
+    return str(value)
+
+
+def content_hash(row: dict) -> int:
+    """64-битный хеш полей фида (signed BIGINT)."""
+
+    payload = json.dumps(
+        [row.get(name) for name in FEED_FIELDS],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=_json_default,
+    )
+
+    digest = hashlib.blake2b(
+        payload.encode("utf-8"),
+        digest_size=8,
+    ).digest()
+
+    return int.from_bytes(
+        digest,
+        "big",
+        signed=True,
+    )
+
+
+@dataclass
+class FeedDownload:
+    path: str | None
+    not_modified: bool
+    etag: str | None
+    last_modified: str | None
+    sha256: str | None
+    size_bytes: int = 0
+
+
+def download_feed(
+    etag: str | None = None,
+    last_modified: str | None = None,
+) -> FeedDownload:
+    """Скачивает ZIP во временный файл.
+
+    Отправляет If-None-Match / If-Modified-Since,
+    если они известны из прошлого импорта.
+    Параллельно считает SHA-256 файла.
+    Входящий трафик Railway не тарифицирует,
+    но 304 экономит и время, и CPU.
+    """
+
+    headers = {}
+
+    if etag:
+        headers["If-None-Match"] = etag
+
+    if last_modified:
+        headers["If-Modified-Since"] = last_modified
+
+    temp_file = tempfile.NamedTemporaryFile(
+        suffix=".zip",
+        delete=False,
+    )
+
+    temp_path = temp_file.name
+    temp_file.close()
+
+    digest = hashlib.sha256()
+    size = 0
+
+    try:
+        with httpx.stream(
+            "GET",
+            GOLDEN_APPLE_FEED_URL,
+            headers=headers,
+            follow_redirects=True,
+            timeout=httpx.Timeout(
+                300.0,
+                connect=30.0,
+            ),
+        ) as response:
+            if response.status_code == 304:
+                os.remove(temp_path)
+                return FeedDownload(
+                    path=None,
+                    not_modified=True,
+                    etag=etag,
+                    last_modified=last_modified,
+                    sha256=None,
+                )
+
+            response.raise_for_status()
+
+            with open(
+                temp_path,
+                "wb",
+            ) as output:
+                for chunk in response.iter_bytes(
+                    chunk_size=1024 * 1024
+                ):
+                    digest.update(chunk)
+                    size += len(chunk)
+                    output.write(chunk)
+
+            new_etag = response.headers.get("etag")
+            new_last_modified = response.headers.get(
+                "last-modified"
+            )
+
+        if not zipfile.is_zipfile(
+            temp_path
+        ):
+            try:
+                with open(
+                    temp_path,
+                    "rb",
+                ) as source:
+                    message = (
+                        source
+                        .read(200)
+                        .decode(
+                            "utf-8",
+                            errors="ignore",
+                        )
+                    )
+            except Exception:
+                message = ""
+
+            raise RuntimeError(
+                "Golden Apple feed "
+                "is not a valid ZIP. "
+                f"Response: {message}"
+            )
+
+        return FeedDownload(
+            path=temp_path,
+            not_modified=False,
+            etag=new_etag,
+            last_modified=new_last_modified,
+            sha256=digest.hexdigest(),
+            size_bytes=size,
+        )
+
+    except Exception:
+        if os.path.exists(
+            temp_path
+        ):
+            os.remove(
+                temp_path
+            )
+
+        raise
+
+
+def iter_feed_items(zip_path: str):
+    with zipfile.ZipFile(
+        zip_path,
+        "r",
+    ) as archive:
+        json_files = [
+            name
+            for name
+            in archive.namelist()
+            if name
+            .lower()
+            .endswith(".json")
+        ]
+
+        if not json_files:
+            raise RuntimeError(
+                "JSON file was not found "
+                "inside Golden Apple ZIP"
+            )
+
+        with archive.open(
+            json_files[0],
+            "r",
+        ) as json_file:
+            yield from ijson.items(
+                json_file,
+                "products.item",
+            )
+
+
+def upsert_changed_batch(
     db,
     rows: list[dict],
+    version: int,
 ):
+    """Отправляет в базу только изменившиеся строки.
+
+    Сравнение по хешу делается до отправки,
+    поэтому неизменившиеся товары вообще
+    не попадают в SQL. WHERE в ON CONFLICT —
+    дополнительная защита от холостой записи
+    на диск, если хеши в памяти устарели.
+    """
+
     if not rows:
         return
 
@@ -409,224 +598,483 @@ def upsert_batch(
         StoreCatalogItem
     ).values(rows)
 
-    statement = (
-        statement.on_conflict_do_update(
-            index_elements=[
-                "store_id",
-                "external_id",
-            ],
-            set_={
-                "group_id":
-                    statement.excluded.group_id,
+    excluded = statement.excluded
+    table = StoreCatalogItem.__table__.c
 
-                "brand_name":
-                    statement.excluded.brand_name,
+    match_changed = or_(
+        *[
+            table[name].is_distinct_from(
+                excluded[name]
+            )
+            for name in MATCH_FIELDS
+        ]
+    )
 
-                "brand_normalized":
-                    statement.excluded.brand_normalized,
+    set_ = {
+        name: excluded[name]
+        for name in FEED_FIELDS
+    }
 
-                "name":
-                    statement.excluded.name,
+    set_.update(
+        {
+            "synced_at": excluded.synced_at,
+            "content_hash": excluded.content_hash,
+            "changed_version": version,
+            "match_changed_version": case(
+                (match_changed, version),
+                else_=table.match_changed_version,
+            ),
+        }
+    )
 
-                "name_normalized":
-                    statement.excluded.name_normalized,
-
-                "type_prefix":
-                    statement.excluded.type_prefix,
-
-                "model":
-                    statement.excluded.model,
-
-                "variant":
-                    statement.excluded.variant,
-
-                "size":
-                    statement.excluded.size,
-
-                "barcode":
-                    statement.excluded.barcode,
-
-                "category_id":
-                    statement.excluded.category_id,
-
-                "image_url":
-                    statement.excluded.image_url,
-
-                "product_url":
-                    statement.excluded.product_url,
-
-                "affiliate_url":
-                    statement.excluded.affiliate_url,
-
-                "current_price":
-                    statement.excluded.current_price,
-
-                "old_price":
-                    statement.excluded.old_price,
-
-                "currency":
-                    statement.excluded.currency,
-
-                "available":
-                    statement.excluded.available,
-
-                "raw_params":
-                    statement.excluded.raw_params,
-
-                "synced_at":
-                    statement.excluded.synced_at,
-            },
-        )
+    statement = statement.on_conflict_do_update(
+        index_elements=[
+            "store_id",
+            "external_id",
+        ],
+        set_=set_,
+        where=or_(
+            table.content_hash.is_distinct_from(
+                excluded.content_hash
+            ),
+            table.available.is_distinct_from(
+                excluded.available
+            ),
+        ),
     )
 
     db.execute(
         statement
     )
 
-    db.commit()
+
+def _last_feed_markers(db, store_id: int):
+    return db.execute(
+        select(
+            CatalogSyncRun.feed_etag,
+            CatalogSyncRun.feed_last_modified,
+            CatalogSyncRun.feed_sha256,
+        )
+        .where(
+            CatalogSyncRun.store_id == store_id,
+            CatalogSyncRun.status.in_(
+                [STATUS_PUBLISHED, STATUS_NOT_MODIFIED]
+            ),
+            CatalogSyncRun.feed_sha256.is_not(None),
+        )
+        .order_by(CatalogSyncRun.id.desc())
+        .limit(1)
+    ).first()
 
 
-def sync_golden_apple_feed():
-    sync_started_at = (
-        datetime.utcnow()
+def _finish_run(
+    run_id: int,
+    status: str,
+    stats: dict,
+    error: str | None = None,
+    download: FeedDownload | None = None,
+):
+    db = SessionLocal()
+    try:
+        run = db.get(CatalogSyncRun, run_id)
+        run.status = status
+        run.finished_at = datetime.now(timezone.utc)
+        run.stats = json.loads(
+            json.dumps(stats, default=str)
+        )
+        run.error = error[:500] if error else None
+        if download is not None:
+            run.feed_etag = download.etag
+            run.feed_last_modified = download.last_modified
+            run.feed_sha256 = download.sha256
+        db.commit()
+    finally:
+        db.close()
+
+
+@dataclass(slots=True)
+class _ExistingRow:
+    id: int
+    hash: int | None
+    available: bool
+    seen: bool
+
+
+def _load_compact_state(db, store_id: int, metrics):
+    """Только (external_id, id, hash, available).
+
+    Это ~30–40 байт на товар вместо полной строки
+    с raw_params и ссылками. Читается потоково.
+    """
+
+    existing: dict[str, _ExistingRow] = {}
+
+    result = db.execute(
+        select(
+            StoreCatalogItem.external_id,
+            StoreCatalogItem.id,
+            StoreCatalogItem.content_hash,
+            StoreCatalogItem.available,
+        )
+        .where(
+            StoreCatalogItem.store_id == store_id
+        )
+        .execution_options(
+            yield_per=10000
+        )
     )
 
-    zip_path = None
-    db = SessionLocal()
+    for external_id, row_id, row_hash, available in result:
+        existing[external_id] = _ExistingRow(
+            row_id,
+            row_hash,
+            bool(available),
+            False,
+        )
 
-    processed = 0
-    skipped = 0
+    metrics.set("db_rows_compact_loaded", len(existing))
+    return existing
+
+
+def sync_golden_apple_feed(
+    force: bool = False,
+):
+    """Импорт каталога Golden Apple.
+
+    1. Межпроцессная блокировка: второй процесс
+       (старое развёртывание, API /admin/sync)
+       не запускает параллельный импорт.
+    2. Если фид не изменился (304 или тот же
+       SHA-256) — база не трогается, новая версия
+       каталога не публикуется.
+    3. Изменившийся фид сравнивается с компактными
+       хешами из базы; отправляются только новые
+       и изменившиеся строки.
+    4. Всё применяется одной транзакцией:
+       изменённые строки, недоступность исчезнувших
+       товаров, инвалидирование отрицательного кэша
+       и публикация версии. Ошибка на любом шаге —
+       откат, неполная версия не публикуется.
+
+    force=True — игнорировать ETag/хеш и сравнить
+    фид с базой (например, после ручной правки).
+    """
+
+    metrics = JobMetrics("catalog_import")
+
+    with metrics:
+        with advisory_lock(engine, IMPORT_LOCK_NAME) as acquired:
+            if not acquired:
+                metrics.set("status", "skipped_locked")
+                print(
+                    "GOLDEN_APPLE_SYNC | SKIPPED | "
+                    "another import holds the lock"
+                )
+                return {
+                    "ok": True,
+                    "status": "skipped_locked",
+                }
+
+            result = _sync_locked(
+                metrics,
+                force,
+            )
+
+    persist_job_run(SessionLocal, metrics)
+    return result
+
+
+def _sync_locked(
+    metrics: JobMetrics,
+    force: bool,
+):
+    started_at = datetime.now(timezone.utc)
+
+    db = SessionLocal()
+    download: FeedDownload | None = None
+    run_id: int | None = None
 
     try:
-        print(
-            "GOLDEN_APPLE_SYNC | START"
-        )
+        store = get_or_create_store(db)
+        store_id = store.id
 
-        store = get_or_create_store(
-            db
-        )
+        markers = _last_feed_markers(db, store_id)
 
-        print(
-            "GOLDEN_APPLE_SYNC | "
-            "DOWNLOADING FEED"
-        )
-
-        zip_path = download_feed()
-
-        print(
-            "GOLDEN_APPLE_SYNC | "
-            "DOWNLOAD COMPLETE"
-        )
-
-        with zipfile.ZipFile(
-            zip_path,
-            "r",
-        ) as archive:
-            json_files = [
-                name
-                for name
-                in archive.namelist()
-                if name
-                .lower()
-                .endswith(".json")
-            ]
-
-            if not json_files:
-                raise RuntimeError(
-                    "JSON file was not found "
-                    "inside Golden Apple ZIP"
-                )
-
-            json_name = json_files[0]
-
-            print(
-                "GOLDEN_APPLE_SYNC | "
-                f"JSON={json_name}"
-            )
-
-            batch: list[dict] = []
-
-            with archive.open(
-                json_name,
-                "r",
-            ) as json_file:
-                products = ijson.items(
-                    json_file,
-                    "products.item",
-                )
-
-                for item in products:
-                    row = prepare_row(
-                        item,
-                        store.id,
-                        sync_started_at,
-                    )
-
-                    if not row:
-                        skipped += 1
-                        continue
-
-                    batch.append(
-                        row
-                    )
-
-                    processed += 1
-
-                    if (
-                        len(batch)
-                        >= BATCH_SIZE
-                    ):
-                        upsert_batch(
-                            db,
-                            batch,
-                        )
-
-                        batch = []
-
-                    if (
-                        processed % 5000
-                        == 0
-                    ):
-                        print(
-                            "GOLDEN_APPLE_SYNC | "
-                            f"PROCESSED={processed} "
-                            f"SKIPPED={skipped}"
-                        )
-
-                if batch:
-                    upsert_batch(
-                        db,
-                        batch,
-                    )
-
-        # Если товар был в старой выгрузке,
-        # но его нет в новой — считаем,
-        # что сейчас он недоступен.
+        # Мы держим блокировку импорта, значит
+        # «running»-запуски остались от упавшего
+        # процесса. Помечаем их, чтобы расписание
+        # и мониторинг видели сбой.
         db.execute(
-            update(
-                StoreCatalogItem
-            )
+            update(CatalogSyncRun)
             .where(
-                StoreCatalogItem.store_id
-                == store.id,
-                StoreCatalogItem.synced_at
-                < sync_started_at,
+                CatalogSyncRun.store_id == store_id,
+                CatalogSyncRun.status == STATUS_RUNNING,
             )
             .values(
-                available=False
+                status=STATUS_FAILED,
+                finished_at=started_at,
+                error="orphaned: process stopped during import",
             )
+        )
+
+        run = CatalogSyncRun(
+            store_id=store_id,
+            status=STATUS_RUNNING,
+            started_at=started_at,
+        )
+        db.add(run)
+        db.commit()
+        run_id = run.id
+
+        download = download_feed(
+            etag=None if force or not markers else markers.feed_etag,
+            last_modified=(
+                None if force or not markers
+                else markers.feed_last_modified
+            ),
+        )
+
+        metrics.set("feed_bytes_downloaded", download.size_bytes)
+
+        if download.not_modified or (
+            not force
+            and markers is not None
+            and download.sha256 == markers.feed_sha256
+        ):
+            metrics.set("status", STATUS_NOT_MODIFIED)
+            metrics.set(
+                "not_modified_by",
+                "http_304"
+                if download.not_modified
+                else "sha256",
+            )
+
+            if download.not_modified and markers is not None:
+                # Сохраняем прежние маркеры, чтобы
+                # следующий запрос тоже был условным.
+                download.sha256 = markers.feed_sha256
+
+            _finish_run(
+                run_id,
+                STATUS_NOT_MODIFIED,
+                metrics.counters,
+                download=download,
+            )
+
+            print("GOLDEN_APPLE_SYNC | NOT MODIFIED")
+
+            return {
+                "ok": True,
+                "status": STATUS_NOT_MODIFIED,
+                "version": None,
+            }
+
+        version = run_id
+
+        # -------------------------
+        # Одна транзакция применения
+        # -------------------------
+
+        # Сериализуем публикации: даже если
+        # advisory lock потерян (обрыв соединения),
+        # второй импорт будет ждать здесь.
+        db.execute(
+            select(Store.id)
+            .where(Store.id == store_id)
+            .with_for_update()
+        )
+
+        existing = _load_compact_state(db, store_id, metrics)
+
+        batch: list[dict] = []
+        processed = 0
+        skipped_invalid = 0
+        inserted = 0
+        updated = 0
+        unchanged = 0
+        returned = 0
+
+        for item in iter_feed_items(download.path):
+            row = prepare_row(
+                item,
+                store_id,
+                started_at,
+            )
+
+            if not row:
+                skipped_invalid += 1
+                continue
+
+            processed += 1
+
+            row_hash = content_hash(row)
+            current = existing.get(row["external_id"])
+
+            if current is not None:
+                current.seen = True
+
+                if (
+                    current.hash == row_hash
+                    and current.available == row["available"]
+                ):
+                    unchanged += 1
+                    continue
+
+                if not current.available and row["available"]:
+                    returned += 1
+
+                updated += 1
+                # Повтор external_id в фиде:
+                # побеждает последняя запись,
+                # как и раньше.
+                current.hash = row_hash
+                current.available = row["available"]
+
+            else:
+                inserted += 1
+                existing[row["external_id"]] = _ExistingRow(
+                    0,
+                    row_hash,
+                    row["available"],
+                    True,
+                )
+
+            row["content_hash"] = row_hash
+            row["changed_version"] = version
+            row["match_changed_version"] = version
+            batch.append(row)
+
+            if len(batch) >= BATCH_SIZE:
+                upsert_changed_batch(db, batch, version)
+                metrics.inc("batches_sent")
+                metrics.inc("rows_sent", len(batch))
+                batch = []
+
+            if processed % 20000 == 0:
+                print(
+                    "GOLDEN_APPLE_SYNC | "
+                    f"PROCESSED={processed} "
+                    f"CHANGED={inserted + updated}"
+                )
+
+        if batch:
+            upsert_changed_batch(db, batch, version)
+            metrics.inc("rows_sent", len(batch))
+
+        if processed == 0:
+            # Пустой фид почти наверняка ошибка
+            # поставщика: не делаем весь каталог
+            # недоступным.
+            raise RuntimeError(
+                "Golden Apple feed contains no products"
+            )
+
+        # Товары, которых нет в этой выгрузке,
+        # становятся недоступными только здесь —
+        # в той же транзакции, что и публикация.
+        disappeared_ids = [
+            state.id
+            for state in existing.values()
+            if not state.seen
+            and state.available
+            and state.id
+        ]
+
+        for start in range(
+            0,
+            len(disappeared_ids),
+            DISAPPEARED_BATCH_SIZE,
+        ):
+            chunk = disappeared_ids[
+                start:start + DISAPPEARED_BATCH_SIZE
+            ]
+            db.execute(
+                update(StoreCatalogItem)
+                .where(StoreCatalogItem.id.in_(chunk))
+                .values(
+                    available=False,
+                    changed_version=version,
+                    match_changed_version=version,
+                    synced_at=started_at,
+                )
+            )
+
+        existing.clear()
+
+        # Отрицательный кэш сопоставления:
+        # устаревает, только если изменились строки
+        # бренда (или, для поиска по частичному
+        # бренду, любые match-поля каталога).
+        stale_result = db.execute(
+            update(ProductMatchMiss)
+            .where(
+                ProductMatchMiss.store_id == store_id,
+                ProductMatchMiss.stale.is_(False),
+                or_(
+                    (
+                        ProductMatchMiss.brand_exact.is_(True)
+                    )
+                    & select(StoreCatalogItem.id)
+                    .where(
+                        StoreCatalogItem.store_id == store_id,
+                        StoreCatalogItem.brand_normalized
+                        == ProductMatchMiss.brand_normalized,
+                        StoreCatalogItem.match_changed_version
+                        == version,
+                    )
+                    .exists(),
+                    (
+                        ProductMatchMiss.brand_exact.is_(False)
+                    )
+                    & select(StoreCatalogItem.id)
+                    .where(
+                        StoreCatalogItem.store_id == store_id,
+                        StoreCatalogItem.match_changed_version
+                        == version,
+                    )
+                    .exists(),
+                ),
+            )
+            .values(stale=True)
+            .execution_options(synchronize_session=False)
+        )
+
+        run_row = db.get(CatalogSyncRun, run_id)
+        run_row.status = STATUS_PUBLISHED
+        run_row.finished_at = datetime.now(timezone.utc)
+        run_row.feed_etag = download.etag
+        run_row.feed_last_modified = download.last_modified
+        run_row.feed_sha256 = download.sha256
+
+        stats = {
+            "processed": processed,
+            "skipped_invalid": skipped_invalid,
+            "inserted": inserted,
+            "updated": updated,
+            "unchanged": unchanged,
+            "returned_to_stock": returned,
+            "marked_unavailable": len(disappeared_ids),
+            "match_misses_invalidated": stale_result.rowcount,
+        }
+
+        for key, value in stats.items():
+            metrics.set(key, value)
+
+        metrics.set("status", STATUS_PUBLISHED)
+        metrics.set("version", version)
+
+        run_row.stats = json.loads(
+            json.dumps(metrics.counters, default=str)
         )
 
         db.commit()
 
         result = {
             "ok": True,
+            "status": STATUS_PUBLISHED,
             "store": STORE_NAME,
-            "processed": processed,
-            "skipped": skipped,
-            "synced_at": (
-                sync_started_at.isoformat()
-            ),
+            "version": version,
+            **stats,
         }
 
         print(
@@ -638,12 +1086,29 @@ def sync_golden_apple_feed():
 
     except Exception as exc:
         db.rollback()
+        metrics.ok = False
+        metrics.set("status", STATUS_FAILED)
 
         print(
             "GOLDEN_APPLE_SYNC | "
             f"FAILED | {type(exc).__name__}: "
-            f"{exc}"
+            f"{str(exc)[:200]}"
         )
+
+        if run_id is not None:
+            try:
+                _finish_run(
+                    run_id,
+                    STATUS_FAILED,
+                    metrics.counters,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            except Exception as finish_exc:
+                print(
+                    "GOLDEN_APPLE_SYNC | "
+                    "FAILED TO RECORD FAILURE:",
+                    type(finish_exc).__name__,
+                )
 
         raise
 
@@ -651,11 +1116,12 @@ def sync_golden_apple_feed():
         db.close()
 
         if (
-            zip_path
+            download is not None
+            and download.path
             and os.path.exists(
-                zip_path
+                download.path
             )
         ):
             os.remove(
-                zip_path
+                download.path
             )

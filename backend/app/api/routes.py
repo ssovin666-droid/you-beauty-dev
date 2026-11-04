@@ -1120,6 +1120,9 @@ def start_golden_apple_sync(
             detail="Forbidden",
         )
 
+    # Импорт сам берёт межпроцессную блокировку:
+    # если бот уже импортирует каталог,
+    # этот запуск завершится со статусом skipped_locked.
     background_tasks.add_task(
         sync_golden_apple_feed
     )
@@ -1213,13 +1216,41 @@ def debug_product_matching(
             store,
         )
 
+        scored = sorted(
+            (
+                (
+                    calculate_match_score(
+                        product,
+                        candidate,
+                    ),
+                    candidate.id,
+                )
+                for candidate in candidates
+            ),
+            key=lambda item: item[0],
+            reverse=True,
+        )[:10]
+
+        # Полные строки (цены, ссылки) —
+        # только для первых десяти.
+        full_rows = {
+            row.id: row
+            for row in db.scalars(
+                select(StoreCatalogItem).where(
+                    StoreCatalogItem.id.in_(
+                        [item_id for _, item_id in scored]
+                    )
+                )
+            ).all()
+        } if scored else {}
+
         scored_candidates = []
 
-        for candidate in candidates:
-            score = calculate_match_score(
-                product,
-                candidate,
-            )
+        for score, item_id in scored:
+            candidate = full_rows.get(item_id)
+
+            if candidate is None:
+                continue
 
             scored_candidates.append(
                 {
@@ -1263,12 +1294,6 @@ def debug_product_matching(
                         candidate.affiliate_url,
                 }
             )
-
-        scored_candidates.sort(
-            key=lambda item:
-                item["score"],
-            reverse=True,
-        )
 
         diagnostics.append(
             {

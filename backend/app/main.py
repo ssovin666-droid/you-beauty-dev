@@ -14,7 +14,13 @@ from app.api.character_routes import (
     router as character_router,
 )
 from app.api.routes import router
-from app.db.session import SessionLocal, engine
+from app.db.schema import ensure_job_schema
+from app.db.session import (
+    SessionLocal,
+    describe_database_url,
+    database_url,
+    engine,
+)
 from app.models import Base
 from app.services.character import seed_items
 
@@ -384,7 +390,16 @@ def prepare_database():
 async def lifespan(
     app: FastAPI,
 ):
+    print(
+        "DB_CONNECTION |",
+        describe_database_url(database_url),
+    )
+
     prepare_database()
+
+    # Таблицы и индексы фоновых задач
+    # (каталог, уведомления, метрики).
+    ensure_job_schema(engine)
 
     db = SessionLocal()
     try:

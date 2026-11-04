@@ -1,21 +1,63 @@
+import hashlib
 import re
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
+from typing import NamedTuple
 
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.metrics import inc as metric_inc
 from app.models import (
     Offer,
     Product,
+    ProductMatchMiss,
     Store,
     StoreCatalogItem,
+)
+from app.services.catalog_versions import (
+    get_published_version,
 )
 
 
 MAX_CANDIDATES = 5000
+
+# Меняйте при изменении алгоритма оценки:
+# все отрицательные результаты станут
+# недействительными и товары будут
+# проверены заново.
+MATCHER_VERSION = "1"
+
+
+class CandidateRow(NamedTuple):
+    """Лёгкая строка каталога для оценки.
+
+    Только поля, которые читают calculate_match_score
+    и is_confident_match. Без raw_params, ссылок и цен:
+    полная строка загружается только для победителя.
+    """
+
+    id: int
+    brand_name: str | None
+    name: str | None
+    model: str | None
+    type_prefix: str | None
+    size: str | None
+    variant: str | None
+
+
+CANDIDATE_COLUMNS = (
+    StoreCatalogItem.id,
+    StoreCatalogItem.brand_name,
+    StoreCatalogItem.name,
+    StoreCatalogItem.model,
+    StoreCatalogItem.type_prefix,
+    StoreCatalogItem.size,
+    StoreCatalogItem.variant,
+)
 
 
 @dataclass
@@ -749,30 +791,46 @@ def get_store(
     )
 
 
-def get_candidates(
-    db: Session,
+def brand_key(
     product: Product,
-    store: Store,
-) -> list[StoreCatalogItem]:
+) -> str:
     brand_name = (
         product.brand.name
         if product.brand
         else None
     )
 
-    brand_normalized = (
-        normalize_text(
-            brand_name
-        )
+    return normalize_text(
+        brand_name
+    )
+
+
+def get_candidates_with_mode(
+    db: Session,
+    product: Product,
+    store: Store,
+) -> tuple[list[CandidateRow], bool]:
+    """Кандидаты и признак точного бренда.
+
+    Условия выборки и лимит те же, что и раньше.
+    Изменилось только то, что читается из базы:
+    7 коротких полей вместо всей строки.
+    ORDER BY id делает результат при лимите
+    детерминированным.
+    """
+
+    brand_normalized = brand_key(
+        product
     )
 
     if not brand_normalized:
-        return []
+        return [], True
 
-    exact_candidates = list(
-        db.scalars(
+    exact_candidates = [
+        CandidateRow(*row)
+        for row in db.execute(
             select(
-                StoreCatalogItem
+                *CANDIDATE_COLUMNS
             )
             .where(
                 StoreCatalogItem.store_id
@@ -783,14 +841,17 @@ def get_candidates(
                 StoreCatalogItem.brand_normalized
                 == brand_normalized,
             )
+            .order_by(
+                StoreCatalogItem.id
+            )
             .limit(
                 MAX_CANDIDATES
             )
         ).all()
-    )
+    ]
 
     if exact_candidates:
-        return exact_candidates
+        return exact_candidates, True
 
     brand_words = [
         word
@@ -800,7 +861,7 @@ def get_candidates(
     ]
 
     if not brand_words:
-        return []
+        return [], False
 
     conditions = [
         StoreCatalogItem.brand_normalized.ilike(
@@ -810,10 +871,11 @@ def get_candidates(
         in brand_words
     ]
 
-    return list(
-        db.scalars(
+    return [
+        CandidateRow(*row)
+        for row in db.execute(
             select(
-                StoreCatalogItem
+                *CANDIDATE_COLUMNS
             )
             .where(
                 StoreCatalogItem.store_id
@@ -825,11 +887,50 @@ def get_candidates(
                     *conditions
                 ),
             )
+            .order_by(
+                StoreCatalogItem.id
+            )
             .limit(
                 MAX_CANDIDATES
             )
         ).all()
+    ], False
+
+
+def get_candidates(
+    db: Session,
+    product: Product,
+    store: Store,
+) -> list[CandidateRow]:
+    candidates, _exact = (
+        get_candidates_with_mode(
+            db,
+            product,
+            store,
+        )
     )
+    return candidates
+
+
+def product_fingerprint(
+    product: Product,
+) -> str:
+    """Отпечаток полей товара, влияющих на поиск."""
+
+    parts = [
+        MATCHER_VERSION,
+        product.brand.name
+        if product.brand
+        else "",
+        product.name or "",
+        product.variant or "",
+        product.size or "",
+        product.category or "",
+    ]
+
+    return hashlib.sha256(
+        "\x1f".join(parts).encode("utf-8")
+    ).hexdigest()
 
 
 def empty_result(
@@ -929,22 +1030,19 @@ def result_from_candidate(
     )
 
 
-def find_best_match(
+@dataclass
+class _SearchInfo:
+    exact_brand: bool = True
+    candidate_count: int = 0
+    from_cache: bool = False
+
+
+def _find_linked(
     db: Session,
     product: Product,
-    store_slug: str = "golden-apple",
-) -> MatchResult:
-    store = get_store(
-        db,
-        store_slug,
-    )
-
-    if not store:
-        return empty_result()
-
-    # Если мы уже когда-то подтвердили
-    # связь, повторно угадывать не надо.
-    linked = db.scalar(
+    store: Store,
+) -> StoreCatalogItem | None:
+    return db.scalar(
         select(
             StoreCatalogItem
         )
@@ -963,7 +1061,45 @@ def find_best_match(
         .limit(1)
     )
 
+
+def _valid_miss(
+    db: Session,
+    product: Product,
+    store: Store,
+) -> ProductMatchMiss | None:
+    miss = db.get(
+        ProductMatchMiss,
+        (product.id, store.id),
+    )
+
+    if (
+        miss is not None
+        and not miss.stale
+        and miss.product_fingerprint
+        == product_fingerprint(product)
+    ):
+        return miss
+
+    return None
+
+
+def _find_best_match(
+    db: Session,
+    product: Product,
+    store: Store,
+    use_negative_cache: bool,
+    info: _SearchInfo,
+) -> MatchResult:
+    # Если мы уже когда-то подтвердили
+    # связь, повторно угадывать не надо.
+    linked = _find_linked(
+        db,
+        product,
+        store,
+    )
+
     if linked:
+        metric_inc("match_linked_hits")
         return result_from_candidate(
             store,
             linked,
@@ -971,11 +1107,34 @@ def find_best_match(
             True,
         )
 
-    candidates = get_candidates(
-        db,
-        product,
-        store,
+    if use_negative_cache:
+        miss = _valid_miss(
+            db,
+            product,
+            store,
+        )
+
+        if miss is not None:
+            metric_inc("match_negative_cache_hits")
+            info.from_cache = True
+            result = empty_result(store)
+            result.confidence = float(
+                miss.best_score or 0.0
+            )
+            return result
+
+    metric_inc("match_searches")
+
+    candidates, info.exact_brand = (
+        get_candidates_with_mode(
+            db,
+            product,
+            store,
+        )
     )
+
+    info.candidate_count = len(candidates)
+    metric_inc("match_candidates", len(candidates))
 
     if not candidates:
         return empty_result(
@@ -1012,12 +1171,95 @@ def find_best_match(
         )
     )
 
+    # Полная строка — только для выбранного
+    # кандидата (ссылки, цены, наличие).
+    full_candidate = db.get(
+        StoreCatalogItem,
+        best_candidate.id,
+    )
+
+    if full_candidate is None:
+        return empty_result(
+            store
+        )
+
     return result_from_candidate(
         store,
-        best_candidate,
+        full_candidate,
         best_score,
         matched,
     )
+
+
+def find_best_match(
+    db: Session,
+    product: Product,
+    store_slug: str = "golden-apple",
+    use_negative_cache: bool = False,
+) -> MatchResult:
+    """Чистый поиск без записи в базу.
+
+    По умолчанию отрицательный кэш не читается,
+    чтобы админские проверки видели свежий результат.
+    """
+
+    store = get_store(
+        db,
+        store_slug,
+    )
+
+    if not store:
+        return empty_result()
+
+    return _find_best_match(
+        db,
+        product,
+        store,
+        use_negative_cache,
+        _SearchInfo(),
+    )
+
+
+def _remember_miss(
+    db: Session,
+    product: Product,
+    store: Store,
+    result: MatchResult,
+    info: _SearchInfo,
+) -> None:
+    now = datetime.now(timezone.utc)
+    miss = db.get(
+        ProductMatchMiss,
+        (product.id, store.id),
+    )
+
+    values = {
+        "product_fingerprint": product_fingerprint(
+            product
+        ),
+        "brand_normalized": brand_key(product) or None,
+        "brand_exact": info.exact_brand,
+        "catalog_version": get_published_version(
+            db,
+            store.id,
+        ),
+        "best_score": result.confidence,
+        "candidate_count": info.candidate_count,
+        "stale": False,
+        "checked_at": now,
+    }
+
+    if miss is None:
+        db.add(
+            ProductMatchMiss(
+                product_id=product.id,
+                store_id=store.id,
+                **values,
+            )
+        )
+    else:
+        for key, value in values.items():
+            setattr(miss, key, value)
 
 
 def create_or_update_offer(
@@ -1107,27 +1349,67 @@ def link_product_to_best_match(
     product: Product,
     store_slug: str = "golden-apple",
 ) -> MatchResult:
-    result = find_best_match(
+    """Находит и сохраняет связь товара с каталогом.
+
+    - подтверждённая связь переиспользуется;
+    - отрицательный результат запоминается
+      в product_match_misses и не пересчитывается,
+      пока не изменится товар или строки
+      каталога его бренда (stale ставит импорт).
+    """
+
+    store = get_store(
         db,
-        product,
         store_slug,
     )
 
-    print(
-        "PRODUCT_MATCH | "
-        f"product_id={product.id} "
-        f"name={product.name!r} "
-        f"matched={result.matched} "
-        f"confidence={result.confidence} "
-        f"catalog_item_id="
-        f"{result.catalog_item_id}"
+    if not store:
+        return empty_result()
+
+    info = _SearchInfo()
+
+    result = _find_best_match(
+        db,
+        product,
+        store,
+        True,
+        info,
     )
+
+    if not info.from_cache:
+        # Без названия товара в логах:
+        # это пользовательские данные.
+        print(
+            "PRODUCT_MATCH | "
+            f"product_id={product.id} "
+            f"matched={result.matched} "
+            f"confidence={result.confidence} "
+            f"candidates={info.candidate_count} "
+            f"catalog_item_id="
+            f"{result.catalog_item_id}"
+        )
 
     if (
         not result.matched
         or result.catalog_item_id
         is None
     ):
+        if not info.from_cache:
+            _remember_miss(
+                db,
+                product,
+                store,
+                result,
+                info,
+            )
+
+            try:
+                db.commit()
+            except IntegrityError:
+                # Параллельный запрос уже
+                # записал этот же промах.
+                db.rollback()
+
         return result
 
     catalog_item = db.get(
@@ -1147,6 +1429,14 @@ def link_product_to_best_match(
         product,
         catalog_item,
     )
+
+    miss = db.get(
+        ProductMatchMiss,
+        (product.id, store.id),
+    )
+
+    if miss is not None:
+        db.delete(miss)
 
     db.commit()
 

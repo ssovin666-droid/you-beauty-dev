@@ -1,6 +1,5 @@
 import asyncio
 import os
-import time
 from datetime import datetime, timezone
 
 from aiogram import Bot, Dispatcher, Router
@@ -19,10 +18,20 @@ from app.core.amplitude import (
     track_event,
 )
 from app.core.config import get_settings
-from app.db.session import SessionLocal
-from app.models.catalog import User
+from app.core.locks import advisory_lock
+from app.core.metrics import JobMetrics, persist_job_run
+from app.db.schema import ensure_job_schema
+from app.db.session import (
+    SessionLocal,
+    database_url,
+    describe_database_url,
+    engine,
+)
+from app.models.catalog import CatalogSyncRun, User
 from app.services.discount_monitor import (
-    check_discount_notifications,
+    apply_catalog_version,
+    deliver_notifications,
+    initialize_new_subscriptions,
 )
 from app.services.golden_apple_feed import (
     sync_golden_apple_feed,
@@ -33,8 +42,12 @@ settings = get_settings()
 router = Router()
 
 
-# Как часто проверять новые сохранённые товары.
-# Здесь полный каталог не скачивается.
+DISCOUNT_LOCK_NAME = "discount_monitor"
+
+
+# Как часто проверять новые подписки и outbox.
+# Здесь каталог не скачивается и подписки
+# целиком не сканируются.
 DISCOUNT_STATE_CHECK_SECONDS = max(
     60,
     int(
@@ -55,6 +68,18 @@ GOLDEN_APPLE_SYNC_SECONDS = max(
         os.getenv(
             "GOLDEN_APPLE_SYNC_SECONDS",
             "10800",
+        )
+    ),
+)
+
+
+# Повтор после неудачного импорта.
+GOLDEN_APPLE_RETRY_SECONDS = max(
+    300,
+    int(
+        os.getenv(
+            "GOLDEN_APPLE_RETRY_SECONDS",
+            "1800",
         )
     ),
 )
@@ -298,89 +323,177 @@ async def start(
         )
 
 
-async def run_discount_check(
-    bot: Bot,
-    sync_catalog: bool = False,
-):
-    """
-    Один проход проверки скидок.
-
-    Если sync_catalog=True:
-    сначала скачиваем свежий каталог
-    Golden Apple.
-
-    Затем проверяем товары пользователей
-    и при необходимости отправляем
-    личные Telegram-сообщения.
-    """
-
-    if sync_catalog:
-        print(
-            "GOLDEN_APPLE_SYNC | START"
-        )
-
-        try:
-            await asyncio.to_thread(
-                sync_golden_apple_feed
-            )
-
-            print(
-                "GOLDEN_APPLE_SYNC | DONE"
-            )
-
-        except Exception as exc:
-            # Ошибка обновления каталога
-            # не должна останавливать бота.
-            print(
-                "GOLDEN_APPLE_SYNC | FAILED:",
-                repr(exc),
-            )
+def _run_sync_phases() -> dict:
+    """Шаги 1 и 2 в отдельном потоке (не блокируют polling)."""
 
     db = SessionLocal()
-
     try:
-        result = (
-            await check_discount_notifications(
-                bot,
-                db,
-            )
-        )
-
-        print(
-            "DISCOUNT_CHECK |",
-            result,
-        )
-
-    except Exception as exc:
+        init_stats = initialize_new_subscriptions(db)
+        version_stats = apply_catalog_version(db)
+        return {
+            "init": init_stats,
+            "version": version_stats,
+        }
+    except Exception:
         db.rollback()
-
-        print(
-            "DISCOUNT_CHECK_ERROR:",
-            repr(exc),
-        )
-
+        raise
     finally:
         db.close()
+
+
+async def run_discount_check(
+    bot: Bot,
+) -> dict | None:
+    """Один проход мониторинга скидок.
+
+    Под межпроцессной блокировкой: при пересечении
+    старого и нового развёртываний второй процесс
+    пропускает проход. В обычном состоянии (нет новых
+    подписок, нет новой версии каталога, пустой outbox)
+    это несколько коротких запросов.
+    """
+
+    metrics = JobMetrics("discount_check")
+
+    with metrics:
+        with advisory_lock(engine, DISCOUNT_LOCK_NAME) as acquired:
+            if not acquired:
+                metrics.set("status", "skipped_locked")
+                return None
+
+            try:
+                phases = await asyncio.to_thread(
+                    _run_sync_phases
+                )
+                delivery = await deliver_notifications(
+                    bot,
+                    SessionLocal,
+                )
+            except Exception as exc:
+                metrics.ok = False
+                print(
+                    "DISCOUNT_CHECK_ERROR:",
+                    type(exc).__name__,
+                    str(exc)[:200],
+                )
+                return None
+
+            metrics.set("status", "ok")
+
+            result = {
+                **phases,
+                "delivery": delivery,
+            }
+
+            print("DISCOUNT_CHECK |", result)
+
+    # Пишем в job_runs только проходы с работой,
+    # чтобы пустые 5-минутные проходы не росли
+    # таблицей (они всё равно видны в JOB_METRICS).
+    if (
+        metrics.get("unique_products")
+        or metrics.get("delivery_sent")
+        or metrics.get("delivery_failed")
+    ):
+        await asyncio.to_thread(
+            persist_job_run,
+            SessionLocal,
+            metrics,
+        )
+
+    return result
+
+
+def catalog_import_due() -> bool:
+    """Расписание импорта хранится в базе.
+
+    Перезапуски и новые развёртывания не сбивают
+    интервал и не запускают лишний импорт.
+    """
+
+    db = SessionLocal()
+    try:
+        last = db.execute(
+            select(
+                CatalogSyncRun.status,
+                CatalogSyncRun.started_at,
+            )
+            .order_by(CatalogSyncRun.id.desc())
+            .limit(1)
+        ).first()
+    finally:
+        db.close()
+
+    if last is None:
+        return True
+
+    status, started_at = last
+
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+
+    age = (
+        datetime.now(timezone.utc) - started_at
+    ).total_seconds()
+
+    if status == "failed":
+        return age >= GOLDEN_APPLE_RETRY_SECONDS
+
+    if status == "running":
+        # Запуск, оставшийся от упавшего процесса.
+        return age >= GOLDEN_APPLE_SYNC_SECONDS
+
+    return age >= GOLDEN_APPLE_SYNC_SECONDS
+
+
+async def run_catalog_import_if_due() -> bool:
+    """Возвращает True, если опубликована новая версия."""
+
+    try:
+        due = await asyncio.to_thread(catalog_import_due)
+    except Exception as exc:
+        print(
+            "GOLDEN_APPLE_SYNC | SCHEDULE CHECK FAILED:",
+            type(exc).__name__,
+        )
+        return False
+
+    if not due:
+        return False
+
+    try:
+        result = await asyncio.to_thread(
+            sync_golden_apple_feed
+        )
+    except Exception as exc:
+        # Ошибка импорта не должна останавливать бота.
+        print(
+            "GOLDEN_APPLE_SYNC | FAILED:",
+            type(exc).__name__,
+        )
+        return False
+
+    return bool(
+        result
+        and result.get("status") == "published"
+    )
 
 
 async def discount_worker(
     bot: Bot,
 ):
-    """
-    Постоянный фоновый worker.
+    """Постоянный фоновый worker.
 
-    1. Каждые несколько минут
-       фиксирует состояние новых товаров.
+    Каждые DISCOUNT_STATE_CHECK_SECONDS:
+    1. фиксирует цену новых подписок;
+    2. если опубликована новая версия каталога —
+       обновляет цены изменившихся товаров
+       и ставит уведомления в outbox;
+    3. отправляет outbox.
 
-    2. Раз в несколько часов
-       обновляет каталог Golden Apple.
-
-    3. После обновления каталога
-       проверяет новые скидки.
-
-    Worker последовательный:
-    две проверки одновременно
-    не запускаются.
+    Раз в GOLDEN_APPLE_SYNC_SECONDS (по базе)
+    импортирует каталог; после публикации версии
+    сразу выполняет проход мониторинга.
     """
 
     # Даём боту спокойно запуститься.
@@ -391,47 +504,21 @@ async def discount_worker(
         f"state_check="
         f"{DISCOUNT_STATE_CHECK_SECONDS}s | "
         f"catalog_sync="
-        f"{GOLDEN_APPLE_SYNC_SECONDS}s"
-    )
-
-    # При первом старте НЕ обновляем
-    # весь каталог.
-    # Сначала просто фиксируем
-    # текущие цены как базовое состояние.
-    await run_discount_check(
-        bot,
-        sync_catalog=False,
-    )
-
-    next_catalog_sync = (
-        time.monotonic()
-        + GOLDEN_APPLE_SYNC_SECONDS
+        f"{GOLDEN_APPLE_SYNC_SECONDS}s | "
+        f"catalog_retry="
+        f"{GOLDEN_APPLE_RETRY_SECONDS}s"
     )
 
     while True:
         try:
+            await run_discount_check(bot)
+
+            if await run_catalog_import_if_due():
+                await run_discount_check(bot)
+
             await asyncio.sleep(
                 DISCOUNT_STATE_CHECK_SECONDS
             )
-
-            now = time.monotonic()
-
-            should_sync_catalog = (
-                now >= next_catalog_sync
-            )
-
-            await run_discount_check(
-                bot,
-                sync_catalog=(
-                    should_sync_catalog
-                ),
-            )
-
-            if should_sync_catalog:
-                next_catalog_sync = (
-                    time.monotonic()
-                    + GOLDEN_APPLE_SYNC_SECONDS
-                )
 
         except asyncio.CancelledError:
             print(
@@ -444,7 +531,7 @@ async def discount_worker(
             # не должна убивать worker.
             print(
                 "DISCOUNT_WORKER_ERROR:",
-                repr(exc),
+                type(exc).__name__,
             )
 
             await asyncio.sleep(60)
@@ -455,6 +542,18 @@ async def main():
         raise SystemExit(
             "BOT_TOKEN is not set"
         )
+
+    print(
+        "DB_CONNECTION |",
+        describe_database_url(database_url),
+    )
+
+    # Таблицы фоновых задач: бот может
+    # стартовать раньше нового API.
+    await asyncio.to_thread(
+        ensure_job_schema,
+        engine,
+    )
 
     bot = Bot(
         settings.bot_token

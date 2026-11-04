@@ -460,13 +460,45 @@ class StoreCatalogItem(Base):
         index=True,
     )
 
+    # Сырые параметры фида нужны только для отладки.
+    # deferred: ORM не тянет этот JSON из базы,
+    # пока к полю не обратились явно.
     raw_params: Mapped[dict | None] = mapped_column(
-        JSON
+        JSON,
+        deferred=True,
     )
 
+    # Время последней записи бизнес-полей
+    # (а не каждого импорта).
     synced_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=datetime.utcnow,
+    )
+
+    # 64-битный хеш всех полей из фида.
+    # Импорт сравнивает его, чтобы не отправлять
+    # в базу неизменившиеся строки.
+    content_hash: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+    )
+
+    # Версия каталога (catalog_sync_runs.id),
+    # в которой строка последний раз изменилась:
+    # цена, ссылки, наличие, любые поля фида.
+    changed_version: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    # Версия, в которой изменились поля,
+    # влияющие на сопоставление (бренд,
+    # название, модель, объём, оттенок, наличие).
+    # Используется для инвалидирования
+    # отрицательного кэша сопоставления.
+    match_changed_version: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
     )
 
     store: Mapped[Store] = relationship()
@@ -567,4 +599,344 @@ class OutboundClick(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=datetime.utcnow,
+    )
+
+
+# -------------------------
+# ФОНОВЫЕ ЗАДАЧИ
+# -------------------------
+
+
+class CatalogSyncRun(Base):
+    """Один запуск импорта фида магазина.
+
+    id опубликованного запуска — это версия
+    каталога. Версия публикуется только
+    вместе с успешным применением изменений
+    в одной транзакции.
+    """
+
+    __tablename__ = "catalog_sync_runs"
+
+    __table_args__ = (
+        Index(
+            "ix_catalog_sync_runs_store_status",
+            "store_id",
+            "status",
+            "id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True
+    )
+
+    store_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "stores.id",
+            ondelete="CASCADE",
+        ),
+    )
+
+    # running | published | not_modified | failed
+    status: Mapped[str] = mapped_column(
+        String(20)
+    )
+
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    feed_etag: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    feed_last_modified: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+
+    feed_sha256: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
+    # Технические метрики запуска (без секретов).
+    stats: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+
+    error: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+
+class ProductMatchMiss(Base):
+    """Отрицательный кэш сопоставления.
+
+    Товар уже искали в каталоге магазина
+    и уверенного совпадения не нашли.
+    Запись перестаёт действовать, если:
+    - изменились поля товара (fingerprint);
+    - импорт изменил строки каталога
+      этого бренда (stale=True).
+    """
+
+    __tablename__ = "product_match_misses"
+
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "products.id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    )
+
+    store_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "stores.id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    )
+
+    product_fingerprint: Mapped[str] = mapped_column(
+        String(64)
+    )
+
+    brand_normalized: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    # Кандидаты найдены по точному бренду
+    # (иначе — по частичному совпадению).
+    brand_exact: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+    )
+
+    catalog_version: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    best_score: Mapped[float | None] = mapped_column(
+        Numeric(6, 2),
+        nullable=True,
+    )
+
+    candidate_count: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    stale: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        index=True,
+    )
+
+    checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+
+class JobState(Base):
+    """Водяные знаки фоновых задач.
+
+    Например, последняя версия каталога,
+    по которой уже обновлены цены подписок.
+    """
+
+    __tablename__ = "job_state"
+
+    key: Mapped[str] = mapped_column(
+        String(100),
+        primary_key=True,
+    )
+
+    int_value: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+
+class DiscountNotification(Base):
+    """Outbox уведомлений о скидке.
+
+    Строка создаётся в той же транзакции,
+    что и обновление last_seen_* подписки,
+    поэтому повторная обработка той же версии
+    каталога не создаёт второе уведомление.
+    dedupe_key уникален.
+    """
+
+    __tablename__ = "discount_notifications"
+
+    __table_args__ = (
+        Index(
+            "ix_discount_notifications_due",
+            "status",
+            "next_attempt_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True
+    )
+
+    dedupe_key: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+    )
+
+    tracked_item_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "tracked_items.id",
+            ondelete="CASCADE",
+        ),
+        index=True,
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "users.id",
+            ondelete="CASCADE",
+        ),
+    )
+
+    offer_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "offers.id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+
+    catalog_version: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    price: Mapped[float | None] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+    )
+
+    discount_percent: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    template_index: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+    )
+
+    text: Mapped[str] = mapped_column(
+        Text
+    )
+
+    button_text: Mapped[str] = mapped_column(
+        String(100)
+    )
+
+    button_url: Mapped[str] = mapped_column(
+        Text
+    )
+
+    # pending | sending | sent | failed | uncertain
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default="pending",
+    )
+
+    attempts: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+    )
+
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+    claimed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    telegram_message_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+    )
+
+    last_error: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+
+class JobRun(Base):
+    """Сводка одного запуска фоновой задачи.
+
+    Нужна, чтобы сравнивать нагрузку
+    до и после изменений. Только числа:
+    без токенов, текстов и ссылок.
+    """
+
+    __tablename__ = "job_runs"
+
+    __table_args__ = (
+        Index(
+            "ix_job_runs_job_started",
+            "job",
+            "started_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True
+    )
+
+    job: Mapped[str] = mapped_column(
+        String(64)
+    )
+
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+    duration_ms: Mapped[int] = mapped_column(
+        Integer
+    )
+
+    ok: Mapped[bool] = mapped_column(
+        Boolean
+    )
+
+    metrics: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
     )
