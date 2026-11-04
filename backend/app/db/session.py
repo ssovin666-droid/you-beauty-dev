@@ -71,6 +71,9 @@ if not database_url.startswith("sqlite"):
         pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "30")),
         pool_recycle=1800,
         connect_args={
+            # Без этого недоступная база (например, приватная
+            # сеть ещё не готова) вешает старт без ошибок.
+            "connect_timeout": int(os.getenv("DB_CONNECT_TIMEOUT", "10")),
             "application_name": os.getenv(
                 "DB_APPLICATION_NAME",
                 os.getenv("RAILWAY_SERVICE_NAME", "cosmi"),

@@ -14,7 +14,7 @@ from app.api.character_routes import (
     router as character_router,
 )
 from app.api.routes import router
-from app.db.schema import ensure_job_schema
+from app.db.schema import JOB_TABLES, ensure_job_schema
 from app.db.session import (
     SessionLocal,
     describe_database_url,
@@ -26,8 +26,17 @@ from app.services.character import seed_items
 
 
 def prepare_database():
+    # Таблицы фоновых задач создаёт только
+    # ensure_job_schema (под блокировкой), иначе
+    # одновременный старт API и бота даёт
+    # UniqueViolation при CREATE TABLE.
     Base.metadata.create_all(
-        bind=engine
+        bind=engine,
+        tables=[
+            table
+            for table in Base.metadata.sorted_tables
+            if table not in JOB_TABLES
+        ],
     )
 
     with engine.begin() as connection:
@@ -395,17 +404,24 @@ async def lifespan(
         describe_database_url(database_url),
     )
 
+    # Каждый шаг старта пишется в лог: если старт
+    # зависнет, будет видно, на каком шаге.
+    print("STARTUP | prepare_database", flush=True)
     prepare_database()
 
-    # Таблицы и индексы фоновых задач
-    # (каталог, уведомления, метрики).
+    # Таблицы и колонки фоновых задач. Индексы
+    # строит бот в фоне — API их не ждёт.
+    print("STARTUP | job schema", flush=True)
     ensure_job_schema(engine)
 
+    print("STARTUP | seed items", flush=True)
     db = SessionLocal()
     try:
         seed_items(db)
     finally:
         db.close()
+
+    print("STARTUP | ready", flush=True)
 
     yield
 

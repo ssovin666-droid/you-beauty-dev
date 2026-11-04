@@ -28,7 +28,7 @@ os.environ.setdefault("APP_ENV", "test")
 
 from sqlalchemy import text  # noqa: E402
 
-from app.db.schema import ensure_job_schema  # noqa: E402
+from app.db.schema import ensure_job_indexes, ensure_job_schema  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
 from app.models import Base  # noqa: E402
 from app.services import golden_apple_feed  # noqa: E402
@@ -44,6 +44,7 @@ def clean_db():
     engine.dispose()
     Base.metadata.create_all(engine)
     ensure_job_schema(engine)
+    ensure_job_indexes(engine)
     yield
 
 

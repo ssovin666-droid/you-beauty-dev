@@ -20,7 +20,7 @@ from app.core.amplitude import (
 from app.core.config import get_settings
 from app.core.locks import advisory_lock
 from app.core.metrics import JobMetrics, persist_job_run
-from app.db.schema import ensure_job_schema
+from app.db.schema import ensure_job_indexes, ensure_job_schema
 from app.db.session import (
     SessionLocal,
     database_url,
@@ -499,6 +499,13 @@ async def discount_worker(
     # Даём боту спокойно запуститься.
     await asyncio.sleep(15)
 
+    # Индексы — оптимизация, строятся в фоне
+    # и не задерживают ни бота, ни API.
+    await asyncio.to_thread(
+        ensure_job_indexes,
+        engine,
+    )
+
     print(
         "DISCOUNT_WORKER | STARTED | "
         f"state_check="
@@ -550,10 +557,12 @@ async def main():
 
     # Таблицы фоновых задач: бот может
     # стартовать раньше нового API.
+    print("STARTUP | job schema", flush=True)
     await asyncio.to_thread(
         ensure_job_schema,
         engine,
     )
+    print("STARTUP | ready", flush=True)
 
     bot = Bot(
         settings.bot_token

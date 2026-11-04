@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from typing import NamedTuple
 
-from sqlalchemy import or_, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import or_, select, text
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.metrics import inc as metric_inc
@@ -1412,6 +1412,15 @@ def link_product_to_best_match(
 
         return result
 
+    if db.bind.dialect.name == "postgresql":
+        # Импорт каталога может держать эту строку
+        # в своей транзакции. Запрос пользователя
+        # не должен ждать конца импорта: через 3 с
+        # связь откладывается до следующего раза.
+        db.execute(
+            text("SET LOCAL lock_timeout = '3s'")
+        )
+
     catalog_item = db.get(
         StoreCatalogItem,
         result.catalog_item_id,
@@ -1420,25 +1429,41 @@ def link_product_to_best_match(
     if not catalog_item:
         return result
 
-    catalog_item.product_id = (
-        product.id
-    )
+    try:
+        catalog_item.product_id = (
+            product.id
+        )
 
-    offer = create_or_update_offer(
-        db,
-        product,
-        catalog_item,
-    )
+        offer = create_or_update_offer(
+            db,
+            product,
+            catalog_item,
+        )
 
-    miss = db.get(
-        ProductMatchMiss,
-        (product.id, store.id),
-    )
+        miss = db.get(
+            ProductMatchMiss,
+            (product.id, store.id),
+        )
 
-    if miss is not None:
-        db.delete(miss)
+        if miss is not None:
+            db.delete(miss)
 
-    db.commit()
+        db.commit()
+
+    except OperationalError as exc:
+        if "lock" not in str(exc).lower():
+            raise
+
+        db.rollback()
+
+        print(
+            "PRODUCT_MATCH | LINK_DEFERRED "
+            f"product_id={product.id} "
+            "catalog row is locked by import"
+        )
+
+        result.offer_id = None
+        return result
 
     result.offer_id = (
         offer.id
